@@ -10,6 +10,7 @@ vite.config.*.timestamp-*
 *-debug.log*
 logs/
 *.log
+uploads/
 data/*.json
 !data/.gitkeep
 .claude-replay.*

@@ -15,6 +15,5 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 COPY server ./server
 RUN chown -R node:node /app
-USER node
 EXPOSE 8080
-CMD ["sh", "-c", "npm run db:migrate && npm run db:seed && npm start"]
+CMD ["sh", "-c", "mkdir -p /app/uploads/private/rg && chown -R node:node /app/uploads && exec su node -s /bin/sh -c 'npm run db:migrate && npm run db:seed && npm start'"]

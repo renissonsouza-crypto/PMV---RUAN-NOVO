@@ -2,6 +2,9 @@ import express from 'express'
 import path from 'node:path'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
+import multer from 'multer'
+import { mkdirSync } from 'node:fs'
+import { unlink } from 'node:fs/promises'
 import { PrismaClient, Prisma } from '@prisma/client'
 import { z } from 'zod'
 
@@ -10,6 +13,13 @@ const prisma = new PrismaClient()
 const port = Number(process.env.PORT || 3001)
 const secret = process.env.JWT_SECRET || 'chave-apenas-para-desenvolvimento-local'
 const dist = path.resolve('dist')
+const privateUploads = path.resolve(process.env.UPLOAD_DIR || 'uploads/private/rg')
+mkdirSync(privateUploads, { recursive: true })
+const upload = multer({
+  storage: multer.diskStorage({ destination: privateUploads, filename: (_req, file, callback) => callback(null, `${crypto.randomUUID()}${path.extname(file.originalname).toLowerCase()}`) }),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, callback) => callback(null, ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)),
+})
 
 app.disable('x-powered-by')
 app.use(express.json({ limit: '50kb' }))
@@ -27,10 +37,22 @@ const auth = (req, res, next) => {
     next()
   } catch { res.status(401).json({ message: 'Sessão inválida ou expirada.' }) }
 }
+const optionalAuth = (req, res, next) => {
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '')
+  if (!token) return next()
+  try { req.auth = jwt.verify(token, secret); next() }
+  catch { res.status(401).json({ message: 'Sessão inválida ou expirada. Entre novamente.' }) }
+}
 const admin = (req, res, next) => auth(req, res, () => req.auth.role === 'ADMIN' ? next() : res.status(403).json({ message: 'Acesso restrito.' }))
 const userView = ({ id, name, email, role, active }) => ({ id, name, email, role, active })
 const periods = { MORNING: 'Diurno', AFTERNOON: 'Vespertino', EVENING: 'Noturno' }
 const statuses = { OPEN: 'abertas', LAST_SPOTS: 'ultimas-vagas', COMING_SOON: 'breve', CLOSED: 'breve' }
+const validCpf = value => {
+  const cpf = String(value).replace(/\D/g, '')
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false
+  const digit = length => { const sum = cpf.slice(0, length).split('').reduce((total, number, index) => total + Number(number) * (length + 1 - index), 0); const remainder = (sum * 10) % 11; return remainder === 10 ? 0 : remainder }
+  return digit(9) === Number(cpf[9]) && digit(10) === Number(cpf[10])
+}
 const courseView = course => {
   const activeClass = course.classes?.find(item => ['OPEN', 'DRAFT'].includes(item.status))
   return { id: course.slug, databaseId: course.id, name: course.name, area: course.area, areaKey: course.areaKey, image: course.image, videoId: course.videoId || '', synopse: course.synopsis, status: statuses[course.status], duracao: course.duration, periodo: periods[activeClass?.period] || 'Diurno', cargaHoraria: course.workload, inscritos: course.classes?.reduce((sum, item) => sum + (item._count?.enrollments || 0), 0) || 0, vagas: activeClass?.capacity || 0, indicadoPara: course.indicatedFor, mediaSalarial: course.salaryRange || 'A consultar', chatColor: course.accentColor, classes: course.classes || [] }
@@ -43,7 +65,9 @@ const classInput = z.object({ courseId: z.string().uuid(), name: z.string().min(
 app.get('/api/health', route(async (_req, res) => { await prisma.$queryRaw`SELECT 1`; res.json({ status: 'ok', database: 'connected' }) }))
 app.post('/api/auth/register', route(async (req, res) => {
   const data = parse(credentials.extend({ name: z.string().trim().min(2).max(120) }), req.body)
-  const user = await prisma.user.create({ data: { name: data.name, email: data.email.toLowerCase(), passwordHash: await bcrypt.hash(data.password, 12) } })
+  const email = data.email.toLowerCase()
+  const user = await prisma.user.create({ data: { name: data.name, email, passwordHash: await bcrypt.hash(data.password, 12) } })
+  await prisma.enrollment.updateMany({ where: { email: { equals: email, mode: 'insensitive' }, userId: null }, data: { userId: user.id } })
   res.status(201).json({ token: jwt.sign({ sub: user.id, role: user.role }, secret, { expiresIn: '8h' }), user: userView(user) })
 }))
 app.post('/api/auth/login', route(async (req, res) => {
@@ -60,12 +84,56 @@ app.get('/api/courses/:slug', route(async (req, res) => {
   const course = await prisma.course.findFirst({ where: { slug: req.params.slug, published: true }, include: courseInclude })
   course ? res.json({ course: courseView(course) }) : res.status(404).json({ message: 'Curso não encontrado.' })
 }))
-app.post('/api/enrollments', route(async (req, res) => {
-  const data = parse(z.object({ classId: z.string().uuid(), name: z.string().trim().min(2).max(120), email: z.string().email().max(160), cpf: z.string().transform(v => v.replace(/\D/g, '')).refine(v => v.length === 11, 'CPF inválido.'), phone: z.string().min(8).max(30), district: z.string().min(2).max(120) }), req.body)
+app.get('/api/address/cep/:cep', route(async (req, res) => {
+  const cep = String(req.params.cep || '').replace(/\D/g, '')
+  if (cep.length !== 8) return res.status(400).json({ message: 'Informe os 8 dígitos do CEP.' })
+  const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`).catch(() => null)
+  if (!response?.ok) return res.status(503).json({ message: 'O serviço de CEP está indisponível. Tente novamente.' })
+  const result = await response.json()
+  if (result.erro) return res.status(404).json({ message: 'CEP não encontrado.' })
+  const city = String(result.localidade || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+  const eligible = result.uf === 'ES' && city === 'VITORIA'
+  res.json({
+    address: { cep: result.cep, street: result.logradouro || '', complement: result.complemento || '', neighborhood: result.bairro || '', city: result.localidade || '', state: result.uf || '', stateName: result.estado || '', region: result.regiao || '', ibge: result.ibge || '', ddd: result.ddd || '' },
+    eligible,
+    message: eligible ? 'CEP válido para matrícula.' : 'Este CEP não pertence ao município de Vitória/ES.',
+  })
+}))
+app.post('/api/enrollments', optionalAuth, upload.single('rgDocument'), route(async (req, res) => {
+  const schema = z.object({ classId: z.string().uuid(), name: z.string().trim().min(2).max(120), email: z.string().email().max(160), cpf: z.string().transform(v => v.replace(/\D/g, '')).refine(validCpf, 'CPF inválido.'), phone: z.string().min(8).max(30), eligibilityType: z.enum(['RESIDENT', 'WORKER']), cep: z.string().optional().default(''), cnpj: z.string().optional().default(''), race: z.enum(['PARDO', 'AMARELO', 'BRANCO', 'PRETO']), birthDate: z.coerce.date(), gender: z.enum(['FEMININO', 'MASCULINO', 'NAO_BINARIO', 'NAO_INFORMAR', 'OUTRO']), education: z.enum(['FUNDAMENTAL_INCOMPLETO', 'FUNDAMENTAL_COMPLETO', 'MEDIO_INCOMPLETO', 'MEDIO_COMPLETO', 'SUPERIOR_INCOMPLETO', 'SUPERIOR_COMPLETO', 'POS_GRADUACAO']), disability: z.string().max(1000).optional().default(''), accessibilityNeeds: z.string().max(1000).optional().default(''), companionNeeds: z.string().max(1000).optional().default(''), lgpdAccepted: z.literal('true'), commitmentAccepted: z.literal('true') })
+  const result = schema.safeParse(req.body)
+  const reject = async message => { if (req.file) await unlink(req.file.path).catch(() => {}); return res.status(400).json({ message }) }
+  if (!result.success) return reject(result.error.issues[0]?.message || 'Revise os dados da matrícula.')
+  if (!req.file) return reject('Envie uma foto legível do RG em JPG, PNG ou WebP.')
+  const data = result.data
+  const authenticatedUser = req.auth ? await prisma.user.findUnique({ where: { id: req.auth.sub } }) : null
+  if (req.auth && (!authenticatedUser?.active || authenticatedUser.role !== 'STUDENT')) return reject('Use uma conta ativa de estudante para realizar a matrícula.')
+  if (authenticatedUser) { data.name = authenticatedUser.name; data.email = authenticatedUser.email }
+  let verifiedAddress = null
+  if (data.eligibilityType === 'RESIDENT') {
+    const cep = data.cep.replace(/\D/g, '')
+    if (cep.length !== 8) return reject('Informe um CEP válido.')
+    const address = await fetch(`https://viacep.com.br/ws/${cep}/json/`).then(response => response.ok ? response.json() : null).catch(() => null)
+    if (!address || address.erro || address.uf !== 'ES' || address.localidade?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase() !== 'VITORIA') return reject('A matrícula exige endereço residencial válido em Vitória/ES.')
+    data.cep = cep
+    verifiedAddress = { district: address.bairro || null, street: address.logradouro || null, addressComplement: address.complemento || null, municipality: address.localidade || null, state: address.uf || null, region: address.regiao || null, ibgeCode: address.ibge || null, ddd: address.ddd || null }
+  } else {
+    const cnpj = data.cnpj.replace(/\D/g, '')
+    if (cnpj.length !== 14) return reject('Informe o CNPJ da empresa em que trabalha.')
+    const company = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`).then(response => response.ok ? response.json() : null).catch(() => null)
+    if (!company || company.uf !== 'ES' || company.municipio?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase() !== 'VITORIA' || company.descricao_situacao_cadastral !== 'ATIVA') return reject('O CNPJ deve estar ativo e possuir endereço em Vitória/ES.')
+    data.cnpj = cnpj
+    data.cep = String(company.cep || '').replace(/\D/g, '')
+    verifiedAddress = { district: company.bairro || null, street: company.logradouro || null, addressComplement: company.complemento || null, municipality: company.municipio || null, state: company.uf || null, region: null, ibgeCode: company.codigo_municipio?.toString() || null, ddd: company.ddd_telefone_1?.replace(/\D/g, '').slice(0, 2) || null }
+  }
   const target = await prisma.classOffering.findUnique({ where: { id: data.classId }, include: { _count: { select: { enrollments: { where: { status: { in: ['PENDING', 'APPROVED'] } } } } } } })
-  if (!target || target.status !== 'OPEN') return res.status(400).json({ message: 'Turma indisponível para inscrição.' })
+  if (!target || target.status !== 'OPEN') return reject('Turma indisponível para inscrição.')
+  const yearStart = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1))
+  const yearlyEnrollments = await prisma.enrollment.count({ where: { cpf: data.cpf, createdAt: { gte: yearStart }, status: { not: 'CANCELLED' } } })
+  if (yearlyEnrollments >= 3) return reject('Limite anual atingido: são permitidas até 3 inscrições por CPF por ano.')
   const status = target._count.enrollments >= target.capacity ? 'WAITLIST' : 'PENDING'
-  const saved = await prisma.enrollment.create({ data: { ...data, status } })
+  const user = authenticatedUser
+  const saved = await prisma.enrollment.create({ data: { classId: data.classId, userId: user?.id, name: data.name, email: data.email.toLowerCase(), cpf: data.cpf, phone: data.phone, eligibilityType: data.eligibilityType, cep: data.cep, ...verifiedAddress, cnpj: data.cnpj || null, race: data.race, birthDate: data.birthDate, gender: data.gender, education: data.education, disability: data.disability || null, accessibilityNeeds: data.accessibilityNeeds || null, companionNeeds: data.companionNeeds || null, rgDocumentPath: req.file.filename, lgpdAcceptedAt: new Date(), commitmentAcceptedAt: new Date(), termsVersion: '2026.1', status } })
   res.status(201).json({ id: saved.id, status, message: status === 'WAITLIST' ? 'Você entrou na lista de espera.' : 'Inscrição realizada.' })
 }))
 app.post('/api/interests', route(async (req, res) => {
@@ -77,6 +145,28 @@ app.post('/api/satisfaction', route(async (req, res) => {
   const d = parse(z.object({ rating: z.coerce.number().int().min(1).max(5), recommend: z.enum(['sim', 'regular', 'nao']), comment: z.string().max(1000).optional().default('') }), req.body)
   const saved = await prisma.evaluation.create({ data: { ...d, comment: d.comment || null } })
   res.status(201).json({ id: saved.id, message: 'Avaliação registrada.' })
+}))
+
+app.get('/api/student/dashboard', auth, route(async (req, res) => {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: req.auth.sub },
+    select: {
+      id: true, name: true, email: true,
+      enrollments: {
+        include: {
+          certificate: true,
+          class: {
+            include: {
+              sessions: { orderBy: { startsAt: 'asc' } },
+              course: { include: { curriculum: { orderBy: { position: 'asc' } } } },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      },
+    },
+  })
+  res.json({ student: user })
 }))
 
 app.use('/api/admin', admin)
@@ -94,7 +184,19 @@ app.get('/api/admin/classes', route(async (_req, res) => res.json({ classes: awa
 app.post('/api/admin/classes', route(async (req, res) => res.status(201).json({ class: await prisma.classOffering.create({ data: parse(classInput, req.body) }) })))
 app.put('/api/admin/classes/:id', route(async (req, res) => res.json({ class: await prisma.classOffering.update({ where: { id: req.params.id }, data: parse(classInput, req.body) }) })))
 app.get('/api/admin/enrollments', route(async (_req, res) => res.json({ enrollments: await prisma.enrollment.findMany({ include: { class: { include: { course: { select: { name: true } } } } }, orderBy: { createdAt: 'desc' } }) })))
-app.patch('/api/admin/enrollments/:id', route(async (req, res) => res.json({ enrollment: await prisma.enrollment.update({ where: { id: req.params.id }, data: parse(z.object({ status: z.enum(['PENDING', 'APPROVED', 'WAITLIST', 'CANCELLED', 'COMPLETED']) }), req.body) }) })))
+app.get('/api/admin/enrollments/:id/rg', route(async (req, res) => {
+  const enrollment = await prisma.enrollment.findUniqueOrThrow({ where: { id: req.params.id }, select: { rgDocumentPath: true } })
+  if (!enrollment.rgDocumentPath) return res.status(404).json({ message: 'Documento não encontrado.' })
+  res.sendFile(path.join(privateUploads, path.basename(enrollment.rgDocumentPath)))
+}))
+app.patch('/api/admin/enrollments/:id', route(async (req, res) => {
+  const { status } = parse(z.object({ status: z.enum(['PENDING', 'APPROVED', 'WAITLIST', 'CANCELLED', 'COMPLETED']) }), req.body)
+  const enrollment = await prisma.enrollment.update({ where: { id: req.params.id }, data: { status } })
+  if (status === 'COMPLETED') {
+    await prisma.certificate.upsert({ where: { enrollmentId: enrollment.id }, update: {}, create: { enrollmentId: enrollment.id, code: `QV-${new Date().getUTCFullYear()}-${enrollment.id.slice(0, 8).toUpperCase()}` } })
+  }
+  res.json({ enrollment })
+}))
 app.get('/api/admin/suggestions', route(async (_req, res) => res.json({ suggestions: await prisma.suggestion.findMany({ orderBy: { createdAt: 'desc' } }) })))
 app.patch('/api/admin/suggestions/:id', route(async (req, res) => res.json({ suggestion: await prisma.suggestion.update({ where: { id: req.params.id }, data: parse(z.object({ reviewed: z.boolean() }), req.body) }) })))
 app.get('/api/admin/evaluations', route(async (_req, res) => res.json({ evaluations: await prisma.evaluation.findMany({ orderBy: { createdAt: 'desc' } }) })))
@@ -102,6 +204,12 @@ app.get('/api/admin/evaluations', route(async (_req, res) => res.json({ evaluati
 app.use(express.static(dist))
 app.get('/{*path}', (_req, res) => res.sendFile(path.join(dist, 'index.html')))
 app.use((error, _req, res, _next) => {
+  if (error instanceof multer.MulterError) {
+    const message = error.code === 'LIMIT_FILE_SIZE'
+      ? 'A imagem do RG deve ter no máximo 5 MB.'
+      : 'Não foi possível receber a imagem do RG.'
+    return res.status(400).json({ message })
+  }
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return res.status(409).json({ message: 'Este registro já existe.' })
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') return res.status(404).json({ message: 'Registro não encontrado.' })
   console.error(error)

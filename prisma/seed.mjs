@@ -30,11 +30,35 @@ async function main() {
       update: { name, area, areaKey, image, videoId, synopsis, status, duration, workload, salaryRange, indicatedFor, accentColor },
       create: { slug, name, area, areaKey, image, videoId, synopsis, status, duration, workload, salaryRange, indicatedFor, accentColor },
     })
-    const existingClass = await prisma.classOffering.findFirst({ where: { courseId: course.id } })
-    if (!existingClass) {
-      await prisma.classOffering.create({
+    let courseClass = await prisma.classOffering.findFirst({ where: { courseId: course.id } })
+    if (!courseClass) {
+      courseClass = await prisma.classOffering.create({
         data: { courseId: course.id, name: `Turma 2026 - ${name}`, period, capacity, status: status === 'COMING_SOON' ? 'DRAFT' : 'OPEN', location: 'Vitória - ES' },
       })
+    }
+
+    const moduleWorkload = Math.floor(Number(workload) / 4)
+    const modules = [
+      ['Fundamentos e introdução', `Conceitos essenciais e panorama profissional de ${name}.`],
+      ['Ferramentas e técnicas', `Uso orientado das principais ferramentas e técnicas de ${name}.`],
+      ['Prática profissional', 'Atividades práticas, resolução de problemas e trabalho em equipe.'],
+      ['Projeto de conclusão', 'Desenvolvimento e apresentação de um projeto aplicado.'],
+    ]
+    for (const [index, [title, description]] of modules.entries()) {
+      await prisma.curriculumModule.upsert({
+        where: { courseId_position: { courseId: course.id, position: index + 1 } },
+        update: { title, description, workload: moduleWorkload },
+        create: { courseId: course.id, title, description, workload: moduleWorkload, position: index + 1 },
+      })
+    }
+
+    if (await prisma.classSession.count({ where: { classId: courseClass.id } }) === 0) {
+      const hour = period === 'EVENING' ? 18 : period === 'AFTERNOON' ? 13 : 8
+      for (let index = 0; index < 8; index++) {
+        const startsAt = new Date(Date.UTC(2026, 8, 1 + index * 7, hour, 0))
+        const endsAt = new Date(startsAt.getTime() + 3 * 60 * 60 * 1000)
+        await prisma.classSession.create({ data: { classId: courseClass.id, title: `Aula ${index + 1} — ${modules[index % modules.length][0]}`, startsAt, endsAt, location: courseClass.location } })
+      }
     }
   }
 }

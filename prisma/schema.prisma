@@ -73,6 +73,7 @@ model Course {
   accentColor   String          @default("#3b82f6") @map("accent_color") @db.VarChar(20)
   published     Boolean         @default(true)
   classes       ClassOffering[]
+  curriculum    CurriculumModule[]
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
 
@@ -92,6 +93,7 @@ model ClassOffering {
   status      ClassStatus      @default(DRAFT)
   course      Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
   enrollments Enrollment[]
+  sessions    ClassSession[]
   createdAt   DateTime         @default(now()) @map("created_at")
   updatedAt   DateTime         @updatedAt @map("updated_at")
 
@@ -107,16 +109,77 @@ model Enrollment {
   email     String           @db.VarChar(160)
   cpf       String           @db.VarChar(14)
   phone     String           @db.VarChar(30)
-  district  String           @db.VarChar(120)
+  district  String?          @db.VarChar(120)
+  eligibilityType String?    @map("eligibility_type") @db.VarChar(20)
+  cep       String?          @db.VarChar(9)
+  street    String?          @db.VarChar(180)
+  addressComplement String?  @map("address_complement") @db.VarChar(180)
+  municipality String?       @db.VarChar(120)
+  state     String?          @db.VarChar(2)
+  region    String?          @db.VarChar(40)
+  ibgeCode  String?          @map("ibge_code") @db.VarChar(12)
+  ddd       String?          @db.VarChar(3)
+  cnpj      String?          @db.VarChar(18)
+  race      String?          @db.VarChar(20)
+  birthDate DateTime?        @map("birth_date") @db.Date
+  gender    String?          @db.VarChar(40)
+  education String?          @db.VarChar(80)
+  disability String?         @db.Text
+  accessibilityNeeds String? @map("accessibility_needs") @db.Text
+  companionNeeds String?     @map("companion_needs") @db.Text
+  rgDocumentPath String?     @map("rg_document_path") @db.Text
+  lgpdAcceptedAt DateTime?   @map("lgpd_accepted_at")
+  commitmentAcceptedAt DateTime? @map("commitment_accepted_at")
+  termsVersion String?       @map("terms_version") @db.VarChar(30)
   status    EnrollmentStatus @default(PENDING)
   class     ClassOffering    @relation(fields: [classId], references: [id], onDelete: Restrict)
   user      User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  certificate Certificate?
   createdAt DateTime         @default(now()) @map("created_at")
   updatedAt DateTime         @updatedAt @map("updated_at")
 
   @@unique([classId, cpf])
   @@index([status, createdAt])
   @@map("enrollments")
+}
+
+model CurriculumModule {
+  id          String   @id @default(uuid()) @db.Uuid
+  courseId    String   @map("course_id") @db.Uuid
+  title       String   @db.VarChar(160)
+  description String   @db.Text
+  workload    Int
+  position    Int
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([courseId, position])
+  @@map("curriculum_modules")
+}
+
+model ClassSession {
+  id        String        @id @default(uuid()) @db.Uuid
+  classId   String        @map("class_id") @db.Uuid
+  title     String        @db.VarChar(180)
+  startsAt  DateTime      @map("starts_at")
+  endsAt    DateTime      @map("ends_at")
+  location  String?       @db.VarChar(180)
+  class     ClassOffering @relation(fields: [classId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  @@index([classId, startsAt])
+  @@map("class_sessions")
+}
+
+model Certificate {
+  id           String     @id @default(uuid()) @db.Uuid
+  enrollmentId String     @unique @map("enrollment_id") @db.Uuid
+  code         String     @unique @db.VarChar(80)
+  issuedAt     DateTime   @default(now()) @map("issued_at")
+  fileUrl      String?    @map("file_url") @db.Text
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@map("certificates")
 }
 
 model Suggestion {

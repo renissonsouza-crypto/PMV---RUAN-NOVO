@@ -44,6 +44,19 @@ html {
   }
 }
 
+@keyframes turtle-wave { 0%,100% { transform: rotate(-2deg) translateY(0); } 50% { transform: rotate(4deg) translateY(-5px); } }
+@keyframes turtle-tech { 0%,100% { transform: translateX(0); } 50% { transform: translateX(-5px) scale(1.04); } }
+@keyframes turtle-chef { 0%,100% { transform: rotate(0); } 30% { transform: rotate(-6deg); } 70% { transform: rotate(6deg); } }
+@keyframes turtle-build { 0%,100% { transform: translateY(0); } 40% { transform: translateY(-3px); } 60% { transform: translateY(2px); } }
+.turtle-mascot { animation: turtle-wave 2.4s ease-in-out infinite; transform-origin: 50% 80%; }
+.turtle-mascot[data-area="tecnologia"] { animation-name: turtle-tech; }
+.turtle-mascot[data-area="gastronomia"] { animation-name: turtle-chef; }
+.turtle-mascot[data-area="construcao"] { animation-name: turtle-build; animation-duration: 1.2s; }
+.turtle-mascot[data-area="criatividade"] { animation-duration: 3.2s; }
+.turtle-mascot[data-area="negocios"] { animation-timing-function: ease-out; }
+.turtle-mascot[data-area="marketing"] { animation-duration: 1.5s; }
+.turtle-mascot[data-area="moda"] { animation-direction: alternate; }
+
 body {
   background-color: #0a0b14;
   color: #e8eaf0;

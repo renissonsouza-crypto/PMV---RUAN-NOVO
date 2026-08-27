@@ -22,8 +22,11 @@ services:
       JWT_SECRET: ${JWT_SECRET:-desenvolvimento-local-chave-qualificavix-2026}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@qualificavix.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@123456}
+      UPLOAD_DIR: /app/uploads/private/rg
     ports:
       - "8080:8080"
+    volumes:
+      - document-data:/app/uploads
     depends_on:
       database:
         condition: service_healthy
@@ -36,3 +39,4 @@ services:
 
 volumes:
   postgres-data:
+  document-data:

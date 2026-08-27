@@ -6,6 +6,7 @@ import { getJson, postJson } from './api'
 type CourseStatus = 'abertas' | 'ultimas-vagas' | 'breve'
 type Periodo = 'Diurno' | 'Vespertino' | 'Noturno'
 type IndicadoPara = 'primeiro-emprego' | 'empreender' | 'mudanca-profissao' | 'atualizacao'
+type StudentProfile = { id: string; name: string; email: string; role: string; active: boolean }
 
 interface Course {
   id: string
@@ -443,33 +444,89 @@ function VideoModal({ course, onClose }: { course: Course; onClose: () => void }
   )
 }
 
-function EnrollmentModal({ course, onClose }: { course: Course; onClose: () => void }) {
+function EnrollmentModal({ course, onClose, student, token }: { course: Course; onClose: () => void; student: StudentProfile | null; token: string }) {
   const targetClass = course.classes?.find(item => item.status === 'OPEN')
-  const [form, setForm] = useState({ name: '', email: '', cpf: '', phone: '', district: '' })
+  const [step, setStep] = useState(1)
+  const [form, setForm] = useState({ name: student?.name || '', email: student?.email || '', phone: '', eligibilityType: 'RESIDENT', cpf: '', cep: '', cnpj: '', race: '', birthDate: '', gender: '', education: '', disability: '', accessibilityNeeds: '', companionNeeds: '', lgpdAccepted: false, commitmentAccepted: false })
+  const [rgDocument, setRgDocument] = useState<File | null>(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [cepLoading, setCepLoading] = useState(false)
+  const [cepResult, setCepResult] = useState<{ address: { cep: string; street: string; complement: string; neighborhood: string; city: string; state: string; stateName: string; region: string; ibge: string; ddd: string }; eligible: boolean; message: string } | null>(null)
+  const [cepError, setCepError] = useState('')
+  useEffect(() => {
+    if (form.eligibilityType !== 'RESIDENT') { setCepResult(null); setCepError(''); return }
+    const cep = form.cep.replace(/\D/g, '')
+    setCepResult(null); setCepError('')
+    if (cep.length !== 8) return
+    const controller = new AbortController()
+    const timer = window.setTimeout(async () => {
+      setCepLoading(true)
+      try {
+        const response = await fetch(`/api/address/cep/${cep}`, { signal: controller.signal })
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.message || 'Não foi possível consultar o CEP.')
+        setCepResult(result)
+        if (!result.eligible) setCepError(result.message)
+      } catch (requestError) {
+        if (requestError instanceof DOMException && requestError.name === 'AbortError') return
+        setCepError(requestError instanceof Error ? requestError.message : 'Não foi possível consultar o CEP.')
+      } finally { if (!controller.signal.aborted) setCepLoading(false) }
+    }, 350)
+    return () => { window.clearTimeout(timer); controller.abort() }
+  }, [form.cep, form.eligibilityType])
   const submit = async (event: React.FormEvent) => {
-    event.preventDefault(); setLoading(true); setError('')
+    event.preventDefault(); setError('')
+    if (form.eligibilityType === 'RESIDENT' && !cepResult?.eligible) { setError('Consulte e informe um CEP válido de Vitória/ES antes de continuar.'); return }
+    setLoading(true)
     try {
-      const result = await postJson<{ message: string }>('/api/enrollments', { ...form, classId: targetClass?.id })
+      const payload = new FormData()
+      Object.entries(form).forEach(([key, value]) => payload.append(key, String(value)))
+      payload.append('classId', targetClass?.id || '')
+      if (rgDocument) payload.append('rgDocument', rgDocument)
+      const response = await fetch('/api/enrollments', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: payload })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.message || 'Não foi possível realizar a inscrição.')
       setMessage(result.message)
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Não foi possível realizar a inscrição.') }
     finally { setLoading(false) }
   }
   return <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 220, background: 'rgba(0,0,0,.86)', display: 'grid', placeItems: 'center', padding: 20 }}>
-    <div onClick={event => event.stopPropagation()} style={{ width: '100%', maxWidth: 520, background: '#111219', border: '1px solid rgba(255,255,255,.1)', borderRadius: 18, padding: 28 }}>
+    <div onClick={event => event.stopPropagation()} style={{ width: '100%', maxWidth: 680, maxHeight: '92vh', overflowY: 'auto', background: '#111219', border: '1px solid rgba(255,255,255,.1)', borderRadius: 18, padding: 28 }}>
       <button onClick={onClose} style={{ float: 'right', background: 'none', border: 0, color: '#94a3b8', cursor: 'pointer', fontSize: 20 }}>×</button>
       <h2 style={{ color: '#fff', marginTop: 0 }}>Inscrição — {course.name}</h2>
-      {message ? <div style={{ color: '#4ade80', padding: 24, textAlign: 'center' }}>{message}</div> : <form onSubmit={submit} style={{ display: 'grid', gap: 12 }}>
-        {[['name','Nome completo'],['email','E-mail'],['cpf','CPF'],['phone','WhatsApp'],['district','Bairro']].map(([key,label]) => <input key={key} type={key === 'email' ? 'email' : 'text'} required placeholder={label} value={form[key as keyof typeof form]} onChange={event => setForm(previous => ({ ...previous, [key]: event.target.value }))} style={{ padding: 12, borderRadius: 9, border: '1px solid rgba(255,255,255,.12)', background: 'rgba(255,255,255,.04)', color: '#fff' }} />)}
-        <button disabled={loading || !targetClass} style={{ padding: 12, border: 0, borderRadius: 9, background: course.chatColor, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>{loading ? 'Enviando…' : targetClass ? 'Confirmar inscrição gratuita' : 'Turma indisponível'}</button>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}><span style={{ color: step === 1 ? '#60a5fa' : '#64748b' }}>1. Contato</span><span style={{ color: '#334155' }}>›</span><span style={{ color: step === 2 ? '#60a5fa' : '#64748b' }}>2. Matrícula</span></div>
+      {message ? <div style={{ color: '#4ade80', padding: 24, textAlign: 'center' }}>{message}</div> : step === 1 ? <form onSubmit={event => { event.preventDefault(); setStep(2) }} style={{ display: 'grid', gap: 12 }}>
+        {student ? <div style={{...termBox,borderColor:'rgba(34,197,94,.4)',background:'rgba(34,197,94,.08)',color:'#86efac'}}>✓ Dados aproveitados da sua conta de estudante.</div> : <div style={termBox}>Já possui cadastro? <a href="/estudante" style={{color:'#60a5fa',fontWeight:700}}>Entre na Área do Estudante</a> para aproveitar automaticamente seu nome e e-mail.</div>}
+        {[['name','Nome completo','text'],['email','E-mail','email'],['phone','Telefone','tel']].map(([key,label,type]) => { const accountField=Boolean(student && (key==='name'||key==='email')); return <label key={key} style={{ display: 'grid', gap: 6, color: '#cbd5e1', fontSize: 13 }}>{label}<input type={type} required readOnly={accountField} value={String(form[key as keyof typeof form])} onChange={event => setForm(previous => ({ ...previous, [key]: event.target.value }))} style={accountField?readOnlyAddressInput:enrollmentInput} /></label> })}
+        <button disabled={!targetClass} style={{ ...enrollmentButton, background: course.chatColor }}>{targetClass ? 'Avançar' : 'Turma indisponível'}</button>
+      </form> : <form onSubmit={submit} style={{ display: 'grid', gap: 14 }}>
+        <label style={enrollmentLabel}>Vínculo com Vitória<select required value={form.eligibilityType} onChange={event => setForm({ ...form, eligibilityType: event.target.value })} style={enrollmentInput}><option value="RESIDENT">Resido em Vitória</option><option value="WORKER">Trabalho em Vitória</option></select></label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}><label style={enrollmentLabel}>CPF<input required value={form.cpf} onChange={e => setForm({...form,cpf:e.target.value})} style={enrollmentInput}/></label>{form.eligibilityType === 'RESIDENT' ? <label style={enrollmentLabel}>CEP residencial<input required inputMode="numeric" maxLength={9} value={form.cep} onChange={e => { const digits=e.target.value.replace(/\D/g,'').slice(0,8); setForm({...form,cep:digits.length>5?`${digits.slice(0,5)}-${digits.slice(5)}`:digits}) }} style={{...enrollmentInput,borderColor:cepResult?.eligible?'#22c55e':cepError?'#ef4444':undefined}} placeholder="29000-000"/><small aria-live="polite" style={{color:cepLoading?'#60a5fa':cepResult?.eligible?'#4ade80':'#f87171'}}>{cepLoading?'Consultando CEP…':cepResult?.eligible?'✓ CEP válido para Vitória/ES':cepError}</small></label> : <label style={enrollmentLabel}>CNPJ da empresa<input required value={form.cnpj} onChange={e => setForm({...form,cnpj:e.target.value})} style={enrollmentInput}/></label>}</div>
+        {form.eligibilityType === 'RESIDENT' && cepResult && <fieldset style={{...termBox,borderColor:cepResult.eligible?'rgba(34,197,94,.45)':'rgba(248,113,113,.45)',background:cepResult.eligible?'rgba(34,197,94,.08)':'rgba(239,68,68,.08)',display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}><legend style={{padding:'0 7px',fontWeight:700}}>Endereço preenchido pelo CEP</legend><label style={{...enrollmentLabel,gridColumn:'1 / -1'}}>Logradouro<input readOnly value={cepResult.address.street} placeholder="Não informado pelo CEP" style={readOnlyAddressInput}/></label><label style={enrollmentLabel}>Bairro<input readOnly value={cepResult.address.neighborhood} placeholder="Não informado pelo CEP" style={readOnlyAddressInput}/></label><label style={enrollmentLabel}>Município<input readOnly value={cepResult.address.city} style={readOnlyAddressInput}/></label><label style={enrollmentLabel}>UF<input readOnly value={`${cepResult.address.state} — ${cepResult.address.stateName}`} style={readOnlyAddressInput}/></label><label style={enrollmentLabel}>Região<input readOnly value={cepResult.address.region} placeholder="Não informada" style={readOnlyAddressInput}/></label><label style={enrollmentLabel}>DDD<input readOnly value={cepResult.address.ddd} placeholder="Não informado" style={readOnlyAddressInput}/></label><label style={enrollmentLabel}>Código IBGE<input readOnly value={cepResult.address.ibge} placeholder="Não informado" style={readOnlyAddressInput}/></label><label style={{...enrollmentLabel,gridColumn:'1 / -1'}}>Complemento do CEP<input readOnly value={cepResult.address.complement} placeholder="Não informado pelo CEP" style={readOnlyAddressInput}/></label></fieldset>}
+        <label style={enrollmentLabel}>Foto do RG <small style={{color:'#64748b'}}>JPG, PNG ou WebP · até 5 MB</small><input type="file" accept="image/jpeg,image/png,image/webp" required onChange={e => setRgDocument(e.target.files?.[0] || null)} style={enrollmentInput}/></label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}><label style={enrollmentLabel}>Autodeclaração de raça<select required value={form.race} onChange={e=>setForm({...form,race:e.target.value})} style={enrollmentInput}><option value="">Selecione</option><option value="PARDO">Pardo</option><option value="AMARELO">Amarelo</option><option value="BRANCO">Branco</option><option value="PRETO">Preto</option></select></label><label style={enrollmentLabel}>Data de nascimento<input type="date" required value={form.birthDate} onChange={e=>setForm({...form,birthDate:e.target.value})} style={enrollmentInput}/></label></div>
+        <label style={enrollmentLabel}>Gênero<select required value={form.gender} onChange={e=>setForm({...form,gender:e.target.value})} style={enrollmentInput}><option value="">Selecione</option><option value="FEMININO">Feminino</option><option value="MASCULINO">Masculino</option><option value="NAO_BINARIO">Não binário</option><option value="OUTRO">Outro</option><option value="NAO_INFORMAR">Prefiro não informar</option></select></label>
+        <label style={enrollmentLabel}>Grau de escolaridade<select required value={form.education} onChange={e=>setForm({...form,education:e.target.value})} style={enrollmentInput}><option value="">Selecione</option><option value="FUNDAMENTAL_INCOMPLETO">Fundamental incompleto</option><option value="FUNDAMENTAL_COMPLETO">Fundamental completo</option><option value="MEDIO_INCOMPLETO">Médio incompleto</option><option value="MEDIO_COMPLETO">Médio completo</option><option value="SUPERIOR_INCOMPLETO">Superior incompleto</option><option value="SUPERIOR_COMPLETO">Superior completo</option><option value="POS_GRADUACAO">Pós-graduação</option></select></label>
+        <label style={enrollmentLabel}>Possui deficiência? Qual?<textarea value={form.disability} onChange={e=>setForm({...form,disability:e.target.value})} style={enrollmentInput}/></label>
+        <label style={enrollmentLabel}>Necessidade de acessibilidade para as aulas<textarea value={form.accessibilityNeeds} onChange={e=>setForm({...form,accessibilityNeeds:e.target.value})} style={enrollmentInput} placeholder="Descreva os recursos necessários, caso haja."/></label>
+        <label style={enrollmentLabel}>Necessidade de acompanhante nas aulas<textarea value={form.companionNeeds} onChange={e=>setForm({...form,companionNeeds:e.target.value})} style={enrollmentInput} placeholder="Descreva a necessidade, caso haja."/></label>
+        <div style={termBox}><strong>Proteção de dados — LGPD</strong><p style={termText}>Autorizo o tratamento dos meus dados pessoais e sensíveis exclusivamente para seleção, matrícula, acompanhamento pedagógico, acessibilidade e certificação. O RG será armazenado em área privada e acessível somente por pessoal autorizado.</p><label><input type="checkbox" required checked={form.lgpdAccepted} onChange={e=>setForm({...form,lgpdAccepted:e.target.checked})}/> Li e autorizo o tratamento descrito.</label></div>
+        <div style={termBox}><strong>Termo de compromisso do estudante</strong><p style={termText}>Comprometo-me a fornecer informações verdadeiras, participar das atividades e cumprir a frequência mínima definida para a turma. Faltas injustificadas, abandono ou fraude podem causar cancelamento da matrícula e impedimento temporário de novas inscrições, após análise administrativa e conforme regulamentação vigente. O limite da plataforma é de 3 inscrições por CPF a cada ano.</p><label><input type="checkbox" required checked={form.commitmentAccepted} onChange={e=>setForm({...form,commitmentAccepted:e.target.checked})}/> Li e aceito o termo de compromisso.</label></div>
+        <div style={{display:'flex',gap:10}}><button type="button" onClick={()=>setStep(1)} style={{...enrollmentButton,background:'#334155'}}>Voltar</button><button disabled={loading || cepLoading || (form.eligibilityType === 'RESIDENT' && !cepResult?.eligible)} style={{...enrollmentButton,background:course.chatColor,flex:1,opacity:(loading || cepLoading || (form.eligibilityType === 'RESIDENT' && !cepResult?.eligible)) ? .55 : 1}}>{loading?'Validando e enviando…':'Finalizar matrícula'}</button></div>
         {error && <p role="alert" style={{ color: '#f87171', margin: 0 }}>{error}</p>}
-        <small style={{ color: '#64748b', lineHeight: 1.5 }}>Seus dados serão utilizados exclusivamente para processar esta inscrição, conforme a Lei Geral de Proteção de Dados.</small>
       </form>}
     </div>
   </div>
 }
+
+const enrollmentInput: React.CSSProperties = { padding: 11, borderRadius: 8, border: '1px solid rgba(255,255,255,.13)', background: '#0b1220', color: '#e2e8f0', fontFamily: 'inherit' }
+const readOnlyAddressInput: React.CSSProperties = { ...enrollmentInput, background: '#161d2b', color: '#cbd5e1', cursor: 'not-allowed' }
+const enrollmentLabel: React.CSSProperties = { display: 'grid', gap: 6, color: '#cbd5e1', fontSize: 13 }
+const enrollmentButton: React.CSSProperties = { padding: 12, border: 0, borderRadius: 9, color: '#fff', fontWeight: 700, cursor: 'pointer' }
+const termBox: React.CSSProperties = { padding: 16, border: '1px solid rgba(96,165,250,.25)', borderRadius: 10, background: 'rgba(37,99,235,.08)', color: '#cbd5e1', fontSize: 13 }
+const termText: React.CSSProperties = { color: '#94a3b8', lineHeight: 1.55, margin: '8px 0 12px' }
 
 function CourseCard({ course, onVideoOpen, onEnroll }: { course: Course; onVideoOpen: () => void; onEnroll: () => void }) {
   const pct = Math.min(95, Math.round((course.inscritos / (course.vagas * 28)) * 100))
@@ -627,8 +684,9 @@ function CourseCard({ course, onVideoOpen, onEnroll }: { course: Course; onVideo
   )
 }
 
-function ChatBot() {
+function ChatBot({ onEnroll }: { onEnroll: (course: Course) => void }) {
   const courses = useCourses()
+  const turtleAccessory: Record<string, string> = { tecnologia: '💻', criatividade: '🎨', negocios: '💼', gastronomia: '👨‍🍳', construcao: '🦺', marketing: '📣', moda: '🧵' }
   const [open, setOpen] = useState(false)
   const [chat, setChat] = useState<ChatState>({
     step: 'objetivo',
@@ -698,7 +756,7 @@ function ChatBot() {
         onClick={() => setOpen(o => !o)}
         style={{
           position: 'fixed', bottom: 24, right: 24, zIndex: 100,
-          width: 56, height: 56, borderRadius: '50%',
+          width: 68, height: 68, borderRadius: '50%',
           background: `linear-gradient(135deg, ${accentColor}, ${accentColor}cc)`,
           border: 'none', cursor: 'pointer', color: '#fff', fontSize: 22,
           boxShadow: `0 4px 20px ${accentColor}66`,
@@ -713,7 +771,7 @@ function ChatBot() {
         }}
         title="Assistente de Cursos"
       >
-        {open ? '✕' : '🤖'}
+        {open ? '✕' : <span className="turtle-mascot" data-area={chat.area || 'default'} style={{ position: 'relative', display: 'block', width: 64, height: 64 }}><img src="/assets/tartaruga-qualificavix.png" alt="Assistente tartaruga do QualificaVix" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />{turtleAccessory[chat.area] && <span style={{ position: 'absolute', top: -8, right: -5, fontSize: 24 }}>{turtleAccessory[chat.area]}</span>}</span>}
       </button>
 
       {/* Panel */}
@@ -721,7 +779,7 @@ function ChatBot() {
         <div
           className="animate-slide-in"
           style={{
-            position: 'fixed', bottom: 92, right: 24, zIndex: 99,
+            position: 'fixed', bottom: 104, right: 24, zIndex: 99,
             width: 360, maxWidth: 'calc(100vw - 48px)',
             background: '#0f1019',
             border: `1px solid ${accentColor}30`,
@@ -738,14 +796,7 @@ function ChatBot() {
             borderBottom: `1px solid ${accentColor}20`,
             display: 'flex', alignItems: 'center', gap: 10,
           }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: '50%',
-              background: `linear-gradient(135deg, ${accentColor}, ${accentColor}99)`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 18, flexShrink: 0,
-            }}>
-              🎓
-            </div>
+            <div className="turtle-mascot" data-area={chat.area || 'default'} style={{ width: 44, height: 44, position: 'relative', flexShrink: 0 }}><img src="/assets/tartaruga-qualificavix.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />{turtleAccessory[chat.area] && <span style={{ position: 'absolute', top: -7, right: -7, fontSize: 18 }}>{turtleAccessory[chat.area]}</span>}</div>
             <div>
               <div style={{ fontWeight: 700, fontSize: 14, color: '#e2e8f0' }}>Assistente QualificaVix</div>
               <div style={{ fontSize: 11, color: accentColor }}>● Online agora</div>
@@ -798,6 +849,7 @@ function ChatBot() {
                 <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 6 }}>{c.area} · {c.cargaHoraria}h · {c.periodo}</div>
                 <StatusBadge status={c.status} />
                 <div style={{ marginTop: 8, fontSize: 12, color: c.chatColor, fontWeight: 600 }}>{c.mediaSalarial}</div>
+                {c.classes?.some(item => item.status === 'OPEN') ? <button type="button" onClick={() => { onEnroll(c); setOpen(false) }} style={{...enrollmentButton,width:'100%',marginTop:10,background:c.chatColor}}>Inscrever-se gratuitamente</button> : <button type="button" onClick={() => { setOpen(false); window.setTimeout(() => document.getElementById('pesquisa')?.scrollIntoView({behavior:'smooth'}), 100) }} style={{...enrollmentButton,width:'100%',marginTop:10,background:'#334155'}}>Avise-me quando abrir</button>}
               </div>
             ))}
 
@@ -929,6 +981,7 @@ function Navbar({ activeSection }: { activeSection: string }) {
               {l.label}
             </a>
           ))}
+          <a href="/estudante" style={{ color: '#60a5fa', fontSize: 14, fontWeight: 700, textDecoration: 'none' }}>Área do estudante</a>
           <a
             href="#cursos"
             style={{
@@ -1106,16 +1159,14 @@ function Hero() {
   )
 }
 
-function CoursesSection() {
+function CoursesSection({ onEnroll }: { onEnroll: (course: Course) => void }) {
   const [videoOpen, setVideoOpen] = useState<Course | null>(null)
-  const [enrollmentOpen, setEnrollmentOpen] = useState<Course | null>(null)
   const courses = useCourses()
   const sorted = [...courses].sort((a, b) => b.inscritos - a.inscritos)
 
   return (
     <section id="cursos" style={{ padding: '80px 24px' }}>
       {videoOpen && <VideoModal course={videoOpen} onClose={() => setVideoOpen(null)} />}
-      {enrollmentOpen && <EnrollmentModal course={enrollmentOpen} onClose={() => setEnrollmentOpen(null)} />}
 
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <div style={{ marginBottom: 48, maxWidth: 560 }}>
@@ -1157,7 +1208,7 @@ function CoursesSection() {
               key={course.id}
               course={course}
               onVideoOpen={() => setVideoOpen(course)}
-              onEnroll={() => course.status === 'breve' ? document.getElementById('pesquisa')?.scrollIntoView() : setEnrollmentOpen(course)}
+              onEnroll={() => course.status === 'breve' ? document.getElementById('pesquisa')?.scrollIntoView() : onEnroll(course)}
             />
           ))}
         </div>
@@ -1807,10 +1858,18 @@ function Footer() {
 export default function App() {
   const [activeSection, setActiveSection] = useState('home')
   const [courses, setCourses] = useState<Course[]>(COURSES)
+  const [enrollmentOpen, setEnrollmentOpen] = useState<Course | null>(null)
+  const [studentToken, setStudentToken] = useState(() => localStorage.getItem('student-token') || '')
+  const [student, setStudent] = useState<StudentProfile | null>(null)
 
   useEffect(() => {
     getJson<{ courses: Course[] }>('/api/courses').then(result => setCourses(result.courses)).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!studentToken) { setStudent(null); return }
+    getJson<{ user: StudentProfile }>('/api/auth/me', studentToken).then(result => setStudent(result.user)).catch(() => { localStorage.removeItem('student-token'); setStudentToken(''); setStudent(null) })
+  }, [studentToken])
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -1827,18 +1886,19 @@ export default function App() {
 
   return (
     <CoursesContext.Provider value={courses}><div style={{ minHeight: '100vh', background: '#0a0b14' }}>
+      {enrollmentOpen && <EnrollmentModal course={enrollmentOpen} student={student} token={studentToken} onClose={() => setEnrollmentOpen(null)} />}
       <a className="skip-link" href="#conteudo">Ir para o conteúdo principal</a>
       <GovernmentBar />
       <Navbar activeSection={activeSection} />
       <Hero />
       <PopularSection />
-      <CoursesSection />
+      <CoursesSection onEnroll={setEnrollmentOpen} />
       <EnrollSection />
       <TestimonialsSection />
       <InterestSurvey />
       <SatisfactionSurvey />
       <Footer />
-      <ChatBot />
+      <ChatBot onEnroll={setEnrollmentOpen} />
     </div></CoursesContext.Provider>
   )
 }
