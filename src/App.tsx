@@ -319,32 +319,21 @@ const AREA_THEMES: Record<string, string> = {
 
 function PrefeituraLogo() {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
-        <circle cx="18" cy="18" r="17" stroke="#3b82f6" strokeWidth="1.5" fill="rgba(59,130,246,0.08)" />
-        <circle cx="18" cy="18" r="11" stroke="#f97316" strokeWidth="1" fill="none" />
-        {[0,45,90,135,180,225,270,315].map((a,i) => (
-          <line
-            key={i}
-            x1="18" y1="18"
-            x2={18 + 14 * Math.cos(a * Math.PI / 180)}
-            y2={18 + 14 * Math.sin(a * Math.PI / 180)}
-            stroke="#3b82f6" strokeWidth="1" opacity="0.5"
-          />
-        ))}
-        <circle cx="18" cy="18" r="4" fill="#f97316" />
-        <circle cx="18" cy="18" r="2" fill="#fff" />
-      </svg>
-      <div>
-        <div style={{ fontSize: 9, letterSpacing: '0.15em', color: '#94a3b8', textTransform: 'uppercase', lineHeight: 1 }}>
-          Prefeitura de
-        </div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', letterSpacing: '0.04em', lineHeight: 1.2 }}>
-          Vitória — ES
-        </div>
-      </div>
-    </div>
+    <a href="https://www.vitoria.es.gov.br/" target="_blank" rel="noreferrer" aria-label="Acessar o portal da Prefeitura de Vitória" style={{ display: 'block', lineHeight: 0 }}>
+      <img src="/assets/brasao-vitoria-header.png" alt="Prefeitura de Vitória" style={{ display: 'block', width: 180, height: 52, objectFit: 'contain' }} />
+    </a>
   )
+}
+
+const COURSE_DEMO_VIDEOS: Record<string, string> = {
+  'prog-web': '/assets/videos/programacao-web.mp4',
+  'design-grafico': '/assets/videos/design-grafico.mp4',
+  'gestao-empresarial': '/assets/videos/gestao-empresarial.mp4',
+  gastronomia: '/assets/videos/gastronomia.mp4',
+  eletricista: '/assets/videos/eletricista.mp4',
+  'marketing-digital': '/assets/videos/marketing-digital.mp4',
+  'assistente-adm': '/assets/videos/assistente-administrativo.mp4',
+  'costura-moda': '/assets/videos/costura-moda.mp4',
 }
 
 function StatusBadge({ status }: { status: CourseStatus }) {
@@ -418,17 +407,17 @@ function VideoModal({ course, onClose }: { course: Course; onClose: () => void }
           </button>
         </div>
 
-        {/* Video iframe */}
+        {/* Vídeo demonstrativo local */}
         <div style={{ position: 'relative', paddingBottom: '56.25%', background: '#000' }}>
-          <iframe
-            src={`https://www.youtube.com/embed/${course.videoId}?autoplay=1&rel=0&modestbranding=1`}
-            title={`Apresentação — ${course.name}`}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
+          <video
+            src={COURSE_DEMO_VIDEOS[course.id]}
+            poster={course.image}
+            aria-label={`Vídeo demonstrativo do curso ${course.name}`}
+            controls autoPlay playsInline
             style={{
               position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none',
             }}
-          />
+          >Seu navegador não oferece suporte à reprodução de vídeos.</video>
         </div>
 
         {/* Quick stats strip */}
@@ -476,6 +465,7 @@ function EnrollmentModal({ course, onClose }: { course: Course; onClose: () => v
         {[['name','Nome completo'],['email','E-mail'],['cpf','CPF'],['phone','WhatsApp'],['district','Bairro']].map(([key,label]) => <input key={key} type={key === 'email' ? 'email' : 'text'} required placeholder={label} value={form[key as keyof typeof form]} onChange={event => setForm(previous => ({ ...previous, [key]: event.target.value }))} style={{ padding: 12, borderRadius: 9, border: '1px solid rgba(255,255,255,.12)', background: 'rgba(255,255,255,.04)', color: '#fff' }} />)}
         <button disabled={loading || !targetClass} style={{ padding: 12, border: 0, borderRadius: 9, background: course.chatColor, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>{loading ? 'Enviando…' : targetClass ? 'Confirmar inscrição gratuita' : 'Turma indisponível'}</button>
         {error && <p role="alert" style={{ color: '#f87171', margin: 0 }}>{error}</p>}
+        <small style={{ color: '#64748b', lineHeight: 1.5 }}>Seus dados serão utilizados exclusivamente para processar esta inscrição, conforme a Lei Geral de Proteção de Dados.</small>
       </form>}
     </div>
   </div>
@@ -867,6 +857,19 @@ function ChatBot() {
 
 // ─── Sections ─────────────────────────────────────────────────────────────────
 
+function GovernmentBar() {
+  return <div style={{ position: 'fixed', inset: '0 0 auto', zIndex: 60, height: 34, background: '#092f57', borderBottom: '1px solid rgba(255,255,255,.15)', color: '#fff' }}>
+    <div style={{ maxWidth: 1200, height: '100%', margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12 }}>
+      <span className="government-label">Prefeitura Municipal de Vitória · Portal de Qualificação Profissional</span>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+        <a href="#conteudo" style={{ color: '#fff' }}>Ir para o conteúdo</a>
+        <a href="https://www.vitoria.es.gov.br/cidadao/acessibilidade" target="_blank" rel="noreferrer" style={{ color: '#fff' }}>Acessibilidade</a>
+        <a href="https://www.vitoria.es.gov.br/" target="_blank" rel="noreferrer" style={{ color: '#fff' }}>Portal da Prefeitura ↗</a>
+      </div>
+    </div>
+  </div>
+}
+
 function Navbar({ activeSection }: { activeSection: string }) {
   const [scrolled, setScrolled] = useState(false)
   useEffect(() => {
@@ -884,7 +887,7 @@ function Navbar({ activeSection }: { activeSection: string }) {
 
   return (
     <nav style={{
-      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
+      position: 'fixed', top: 34, left: 0, right: 0, zIndex: 50,
       padding: '0 24px',
       background: scrolled ? 'rgba(10,11,20,0.92)' : 'transparent',
       backdropFilter: scrolled ? 'blur(12px)' : 'none',
@@ -904,14 +907,14 @@ function Navbar({ activeSection }: { activeSection: string }) {
             <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, fontWeight: 400, color: '#fff', letterSpacing: '-0.01em' }}>
               Qualifica
             </span>
-            <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, fontWeight: 400, color: '#f97316', letterSpacing: '-0.01em' }}>
+            <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, fontWeight: 400, color: '#3b82f6', letterSpacing: '-0.01em' }}>
               Vix
             </span>
           </div>
         </div>
 
         {/* Nav links */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
+        <div className="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
           {links.map(l => (
             <a
               key={l.href}
@@ -948,6 +951,7 @@ function Navbar({ activeSection }: { activeSection: string }) {
 }
 
 function Hero() {
+  const courses = useCourses()
   const [imgIndex, setImgIndex] = useState(0)
 
   useEffect(() => {
@@ -958,7 +962,7 @@ function Hero() {
   }, [])
 
   return (
-    <section style={{ position: 'relative', height: '100vh', minHeight: 600, overflow: 'hidden' }}>
+    <section id="conteudo" aria-labelledby="titulo-principal" style={{ position: 'relative', height: '100vh', minHeight: 680, overflow: 'hidden' }}>
       {/* Background images */}
       {HERO_IMAGES.map((src, i) => (
         <div
@@ -997,7 +1001,7 @@ function Hero() {
           </span>
         </div>
 
-        <h1 style={{
+        <h1 id="titulo-principal" style={{
           fontFamily: "'DM Serif Display', serif",
           fontSize: 'clamp(44px, 7vw, 80px)',
           fontWeight: 400, color: '#fff', lineHeight: 1.1,
@@ -1058,6 +1062,7 @@ function Hero() {
           {HERO_IMAGES.map((_, i) => (
             <button
               key={i}
+              aria-label={`Exibir imagem ${i + 1} de ${HERO_IMAGES.length}`}
               onClick={() => setImgIndex(i)}
               style={{
                 width: i === imgIndex ? 24 : 6, height: 6, borderRadius: 3,
@@ -1082,10 +1087,10 @@ function Hero() {
           gap: 0,
         }}>
           {[
-            { value: '8', label: 'Cursos disponíveis', color: '#f97316' },
-            { value: '7.831', label: 'Alunos matriculados', color: '#3b82f6' },
+            { value: String(courses.length), label: 'Cursos no catálogo', color: '#f97316' },
+            { value: 'Online', label: 'Pré-inscrição simplificada', color: '#3b82f6' },
             { value: '100%', label: 'Gratuito — sem taxas', color: '#22c55e' },
-            { value: '4 bairros', label: 'Polos em Vitória', color: '#f97316' },
+            { value: 'Vitória', label: 'Oportunidades para moradores', color: '#f97316' },
           ].map((s, i) => (
             <div key={i} style={{
               padding: '18px 0', textAlign: 'center',
@@ -1743,7 +1748,7 @@ function Footer() {
           <div style={{ maxWidth: 280 }}>
             <div style={{ marginBottom: 12 }}>
               <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: '#fff' }}>Qualifica</span>
-              <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: '#f97316' }}>Vix</span>
+              <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: '#3b82f6' }}>Vix</span>
             </div>
             <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.6, margin: 0 }}>
               Programa de qualificação profissional gratuita da Prefeitura de Vitória — ES. Investindo nas pessoas que fazem a nossa cidade.
@@ -1770,10 +1775,10 @@ function Footer() {
               Contato
             </div>
             <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.8 }}>
-              <div>📍 Av. Marechal Mascarenhas de Moraes</div>
-              <div>Vitória, ES — CEP 29.050-015</div>
-              <div style={{ marginTop: 8 }}>☎️ (27) 3383-5000</div>
-              <div>🌐 vitoria.es.gov.br</div>
+              <div>📍 Av. Marechal Mascarenhas de Moraes, 1927</div>
+              <div>Bento Ferreira, Vitória — ES · CEP 29.050-945</div>
+              <div style={{ marginTop: 8 }}><a href="https://www.vitoria.es.gov.br/contato" target="_blank" rel="noreferrer" style={{ color: '#94a3b8' }}>Fale com a Prefeitura ↗</a></div>
+              <div><a href="https://vixcursos.vitoria.es.gov.br" target="_blank" rel="noreferrer" style={{ color: '#94a3b8' }}>Portal VixCursos ↗</a></div>
             </div>
           </div>
         </div>
@@ -1787,9 +1792,9 @@ function Footer() {
             © 2026 Prefeitura Municipal de Vitória — Todos os direitos reservados
           </div>
           <div style={{ display: 'flex', gap: 16 }}>
-            {['Termos de Uso', 'Privacidade', 'Acessibilidade'].map(l => (
-              <span key={l} style={{ fontSize: 12, color: '#334155', cursor: 'pointer' }}>{l}</span>
-            ))}
+            <a href="https://www.vitoria.es.gov.br/cidadao/acessibilidade" target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#64748b' }}>Acessibilidade</a>
+            <a href="https://transparencia.vitoria.es.gov.br/" target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#64748b' }}>Transparência</a>
+            <a href="/admin" style={{ fontSize: 12, color: '#64748b' }}>Área administrativa</a>
           </div>
         </div>
       </div>
@@ -1822,6 +1827,8 @@ export default function App() {
 
   return (
     <CoursesContext.Provider value={courses}><div style={{ minHeight: '100vh', background: '#0a0b14' }}>
+      <a className="skip-link" href="#conteudo">Ir para o conteúdo principal</a>
+      <GovernmentBar />
       <Navbar activeSection={activeSection} />
       <Hero />
       <PopularSection />

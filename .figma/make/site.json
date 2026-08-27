@@ -1,10 +1,12 @@
 {
-  "description": "Offers a modern dark-mode platform showcasing free courses with detailed info, interactive chatbot, student stories, and enrollment guidance for learners.",
+  "title": "QualificaVix | Cursos de Qualificação Profissional",
+  "description": "Consulte cursos gratuitos de qualificação profissional, turmas e inscrições do município de Vitória, Espírito Santo.",
+  "language": "pt-BR",
   "robots": {
-    "index": false
+    "index": true
   },
   "accessibility": {
-    "addBypassLinks": false,
+    "addBypassLinks": true,
     "ignoreReducedMotion": false
   }
 }
