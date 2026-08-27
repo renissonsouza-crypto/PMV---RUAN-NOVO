@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  STUDENT
+}
+
+enum CourseStatus {
+  OPEN
+  LAST_SPOTS
+  COMING_SOON
+  CLOSED
+}
+
+enum Period {
+  MORNING
+  AFTERNOON
+  EVENING
+}
+
+enum ClassStatus {
+  DRAFT
+  OPEN
+  IN_PROGRESS
+  FINISHED
+  CANCELLED
+}
+
+enum EnrollmentStatus {
+  PENDING
+  APPROVED
+  WAITLIST
+  CANCELLED
+  COMPLETED
+}
+
+model User {
+  id           String       @id @default(uuid()) @db.Uuid
+  name         String       @db.VarChar(120)
+  email        String       @unique @db.VarChar(160)
+  passwordHash String       @map("password_hash")
+  role         Role         @default(STUDENT)
+  active       Boolean      @default(true)
+  enrollments  Enrollment[]
+  evaluations  Evaluation[]
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model Course {
+  id            String          @id @default(uuid()) @db.Uuid
+  slug          String          @unique @db.VarChar(80)
+  name          String          @db.VarChar(160)
+  area          String          @db.VarChar(100)
+  areaKey       String          @map("area_key") @db.VarChar(80)
+  image         String          @db.Text
+  videoId       String?         @map("video_id") @db.VarChar(40)
+  synopsis      String          @db.Text
+  status        CourseStatus    @default(COMING_SOON)
+  duration      String          @db.VarChar(60)
+  workload      Int
+  salaryRange   String?         @map("salary_range") @db.VarChar(100)
+  indicatedFor  String[]        @map("indicated_for")
+  accentColor   String          @default("#3b82f6") @map("accent_color") @db.VarChar(20)
+  published     Boolean         @default(true)
+  classes       ClassOffering[]
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  @@index([published, status])
+  @@map("courses")
+}
+
+model ClassOffering {
+  id          String           @id @default(uuid()) @db.Uuid
+  courseId    String           @map("course_id") @db.Uuid
+  name        String           @db.VarChar(120)
+  period      Period
+  capacity    Int
+  startDate   DateTime?        @map("start_date") @db.Date
+  endDate     DateTime?        @map("end_date") @db.Date
+  location    String?          @db.VarChar(180)
+  status      ClassStatus      @default(DRAFT)
+  course      Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  enrollments Enrollment[]
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  @@index([courseId, status])
+  @@map("class_offerings")
+}
+
+model Enrollment {
+  id        String           @id @default(uuid()) @db.Uuid
+  classId   String           @map("class_id") @db.Uuid
+  userId    String?          @map("user_id") @db.Uuid
+  name      String           @db.VarChar(120)
+  email     String           @db.VarChar(160)
+  cpf       String           @db.VarChar(14)
+  phone     String           @db.VarChar(30)
+  district  String           @db.VarChar(120)
+  status    EnrollmentStatus @default(PENDING)
+  class     ClassOffering    @relation(fields: [classId], references: [id], onDelete: Restrict)
+  user      User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  @@unique([classId, cpf])
+  @@index([status, createdAt])
+  @@map("enrollments")
+}
+
+model Suggestion {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(120)
+  district  String   @db.VarChar(120)
+  course    String   @db.VarChar(160)
+  contact   String?  @db.VarChar(160)
+  reviewed  Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([reviewed, createdAt])
+  @@map("suggestions")
+}
+
+model Evaluation {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  rating    Int
+  recommend String   @db.VarChar(20)
+  comment   String?  @db.Text
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("evaluations")
+}
