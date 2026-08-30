@@ -7,6 +7,11 @@ type CourseStatus = 'abertas' | 'ultimas-vagas' | 'breve'
 type Periodo = 'Diurno' | 'Vespertino' | 'Noturno'
 type IndicadoPara = 'primeiro-emprego' | 'empreender' | 'mudanca-profissao' | 'atualizacao'
 type StudentProfile = { id: string; name: string; email: string; role: string; active: boolean }
+type EnrollmentProfile = {
+  name: string; email: string; phone: string; cpf: string; eligibilityType: string; cep: string; cnpj: string
+  race: string; birthDate: string; gender: string; education: string; disability: string
+  accessibilityNeeds: string; companionNeeds: string; hasRgDocument: boolean
+}
 
 interface Course {
   id: string
@@ -444,10 +449,11 @@ function VideoModal({ course, onClose }: { course: Course; onClose: () => void }
   )
 }
 
-function EnrollmentModal({ course, onClose, student, token }: { course: Course; onClose: () => void; student: StudentProfile | null; token: string }) {
+function EnrollmentModal({ course, onClose, student, profile, token }: { course: Course; onClose: () => void; student: StudentProfile | null; profile: EnrollmentProfile | null; token: string }) {
   const targetClass = course.classes?.find(item => item.status === 'OPEN')
+  const hasReusableEnrollment = Boolean(profile?.phone && profile?.cpf && profile?.eligibilityType && profile?.race && profile?.birthDate && profile?.gender && profile?.education && profile?.hasRgDocument && (profile.eligibilityType === 'WORKER' || profile?.cep))
   const [step, setStep] = useState(1)
-  const [form, setForm] = useState({ name: student?.name || '', email: student?.email || '', phone: '', eligibilityType: 'RESIDENT', cpf: '', cep: '', cnpj: '', race: '', birthDate: '', gender: '', education: '', disability: '', accessibilityNeeds: '', companionNeeds: '', lgpdAccepted: false, commitmentAccepted: false })
+  const [form, setForm] = useState({ name: profile?.name || student?.name || '', email: profile?.email || student?.email || '', phone: profile?.phone || '', eligibilityType: profile?.eligibilityType || 'RESIDENT', cpf: profile?.cpf || '', cep: profile?.cep || '', cnpj: profile?.cnpj || '', race: profile?.race || '', birthDate: profile?.birthDate || '', gender: profile?.gender || '', education: profile?.education || '', disability: profile?.disability || '', accessibilityNeeds: profile?.accessibilityNeeds || '', companionNeeds: profile?.companionNeeds || '', lgpdAccepted: false, commitmentAccepted: false })
   const [rgDocument, setRgDocument] = useState<File | null>(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -498,20 +504,22 @@ function EnrollmentModal({ course, onClose, student, token }: { course: Course; 
       <h2 style={{ color: '#fff', marginTop: 0 }}>Inscrição — {course.name}</h2>
       <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}><span style={{ color: step === 1 ? '#60a5fa' : '#64748b' }}>1. Contato</span><span style={{ color: '#334155' }}>›</span><span style={{ color: step === 2 ? '#60a5fa' : '#64748b' }}>2. Matrícula</span></div>
       {message ? <div style={{ color: '#4ade80', padding: 24, textAlign: 'center' }}>{message}</div> : step === 1 ? <form onSubmit={event => { event.preventDefault(); setStep(2) }} style={{ display: 'grid', gap: 12 }}>
-        {student ? <div style={{...termBox,borderColor:'rgba(34,197,94,.4)',background:'rgba(34,197,94,.08)',color:'#86efac'}}>✓ Dados aproveitados da sua conta de estudante.</div> : <div style={termBox}>Já possui cadastro? <a href="/estudante" style={{color:'#60a5fa',fontWeight:700}}>Entre na Área do Estudante</a> para aproveitar automaticamente seu nome e e-mail.</div>}
-        {[['name','Nome completo','text'],['email','E-mail','email'],['phone','Telefone','tel']].map(([key,label,type]) => { const accountField=Boolean(student && (key==='name'||key==='email')); return <label key={key} style={{ display: 'grid', gap: 6, color: '#cbd5e1', fontSize: 13 }}>{label}<input type={type} required readOnly={accountField} value={String(form[key as keyof typeof form])} onChange={event => setForm(previous => ({ ...previous, [key]: event.target.value }))} style={accountField?readOnlyAddressInput:enrollmentInput} /></label> })}
+        {student ? <div style={{...termBox,borderColor:'rgba(34,197,94,.4)',background:'rgba(34,197,94,.08)',color:'#86efac'}}>✓ Usaremos os dados já cadastrados na sua conta. Você só precisa completar o que faltar.</div> : <div style={termBox}>Já possui cadastro? <a href="/estudante" style={{color:'#60a5fa',fontWeight:700}}>Entre na Área do Estudante</a> para aproveitar automaticamente seus dados.</div>}
+        {profile?.phone ? <div style={{...termBox,borderColor:'rgba(34,197,94,.4)',background:'rgba(34,197,94,.08)'}}><strong style={{color:'#86efac'}}>Dados de contato encontrados</strong><div style={{marginTop:7,color:'#cbd5e1'}}>{form.name}<br />{form.email}<br />{form.phone}</div><small style={{display:'block',marginTop:8,color:'#94a3b8'}}>Confira seus dados na etapa final antes de concluir.</small></div> : [['name','Nome completo','text'],['email','E-mail','email'],['phone','Telefone','tel']].map(([key,label,type]) => { const accountField=Boolean(student && (key==='name'||key==='email')); return <label key={key} style={{ display: 'grid', gap: 6, color: '#cbd5e1', fontSize: 13 }}>{label}<input type={type} required readOnly={accountField} value={String(form[key as keyof typeof form])} onChange={event => setForm(previous => ({ ...previous, [key]: event.target.value }))} style={accountField?readOnlyAddressInput:enrollmentInput} /></label> })}
         <button disabled={!targetClass} style={{ ...enrollmentButton, background: course.chatColor }}>{targetClass ? 'Avançar' : 'Turma indisponível'}</button>
       </form> : <form onSubmit={submit} style={{ display: 'grid', gap: 14 }}>
+        {hasReusableEnrollment ? <div style={{...termBox,borderColor:'rgba(34,197,94,.4)',background:'rgba(34,197,94,.08)'}}><strong style={{color:'#86efac'}}>Resumo dos dados para confirmação</strong><p style={{margin:'8px 0 0',lineHeight:1.6}}>Usaremos seus dados cadastrados, incluindo CPF, vínculo com Vitória, endereço e informações de perfil. Nenhuma informação será solicitada novamente.</p><p style={{margin:'8px 0 0',color:'#cbd5e1'}}><strong>Curso:</strong> {course.name}<br /><strong>Contato:</strong> {form.name} · {form.phone}</p></div> : <>
         <label style={enrollmentLabel}>Vínculo com Vitória<select required value={form.eligibilityType} onChange={event => setForm({ ...form, eligibilityType: event.target.value })} style={enrollmentInput}><option value="RESIDENT">Resido em Vitória</option><option value="WORKER">Trabalho em Vitória</option></select></label>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}><label style={enrollmentLabel}>CPF<input required value={form.cpf} onChange={e => setForm({...form,cpf:e.target.value})} style={enrollmentInput}/></label>{form.eligibilityType === 'RESIDENT' ? <label style={enrollmentLabel}>CEP residencial<input required inputMode="numeric" maxLength={9} value={form.cep} onChange={e => { const digits=e.target.value.replace(/\D/g,'').slice(0,8); setForm({...form,cep:digits.length>5?`${digits.slice(0,5)}-${digits.slice(5)}`:digits}) }} style={{...enrollmentInput,borderColor:cepResult?.eligible?'#22c55e':cepError?'#ef4444':undefined}} placeholder="29000-000"/><small aria-live="polite" style={{color:cepLoading?'#60a5fa':cepResult?.eligible?'#4ade80':'#f87171'}}>{cepLoading?'Consultando CEP…':cepResult?.eligible?'✓ CEP válido para Vitória/ES':cepError}</small></label> : <label style={enrollmentLabel}>CNPJ da empresa<input required value={form.cnpj} onChange={e => setForm({...form,cnpj:e.target.value})} style={enrollmentInput}/></label>}</div>
         {form.eligibilityType === 'RESIDENT' && cepResult && <fieldset style={{...termBox,borderColor:cepResult.eligible?'rgba(34,197,94,.45)':'rgba(248,113,113,.45)',background:cepResult.eligible?'rgba(34,197,94,.08)':'rgba(239,68,68,.08)',display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}><legend style={{padding:'0 7px',fontWeight:700}}>Endereço preenchido pelo CEP</legend><label style={{...enrollmentLabel,gridColumn:'1 / -1'}}>Logradouro<input readOnly value={cepResult.address.street} placeholder="Não informado pelo CEP" style={readOnlyAddressInput}/></label><label style={enrollmentLabel}>Bairro<input readOnly value={cepResult.address.neighborhood} placeholder="Não informado pelo CEP" style={readOnlyAddressInput}/></label><label style={enrollmentLabel}>Município<input readOnly value={cepResult.address.city} style={readOnlyAddressInput}/></label><label style={enrollmentLabel}>UF<input readOnly value={`${cepResult.address.state} — ${cepResult.address.stateName}`} style={readOnlyAddressInput}/></label><label style={enrollmentLabel}>Região<input readOnly value={cepResult.address.region} placeholder="Não informada" style={readOnlyAddressInput}/></label><label style={enrollmentLabel}>DDD<input readOnly value={cepResult.address.ddd} placeholder="Não informado" style={readOnlyAddressInput}/></label><label style={enrollmentLabel}>Código IBGE<input readOnly value={cepResult.address.ibge} placeholder="Não informado" style={readOnlyAddressInput}/></label><label style={{...enrollmentLabel,gridColumn:'1 / -1'}}>Complemento do CEP<input readOnly value={cepResult.address.complement} placeholder="Não informado pelo CEP" style={readOnlyAddressInput}/></label></fieldset>}
-        <label style={enrollmentLabel}>Foto do RG <small style={{color:'#64748b'}}>JPG, PNG ou WebP · até 5 MB</small><input type="file" accept="image/jpeg,image/png,image/webp" required onChange={e => setRgDocument(e.target.files?.[0] || null)} style={enrollmentInput}/></label>
+        {profile?.hasRgDocument ? <div style={{...termBox,borderColor:'rgba(34,197,94,.4)',background:'rgba(34,197,94,.08)',color:'#86efac'}}>✓ Documento de identificação já validado no seu cadastro e será reutilizado.</div> : <label style={enrollmentLabel}>Foto do RG <small style={{color:'#64748b'}}>JPG, PNG ou WebP · até 5 MB</small><input type="file" accept="image/jpeg,image/png,image/webp" required onChange={e => setRgDocument(e.target.files?.[0] || null)} style={enrollmentInput}/></label>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}><label style={enrollmentLabel}>Autodeclaração de raça<select required value={form.race} onChange={e=>setForm({...form,race:e.target.value})} style={enrollmentInput}><option value="">Selecione</option><option value="PARDO">Pardo</option><option value="AMARELO">Amarelo</option><option value="BRANCO">Branco</option><option value="PRETO">Preto</option></select></label><label style={enrollmentLabel}>Data de nascimento<input type="date" required value={form.birthDate} onChange={e=>setForm({...form,birthDate:e.target.value})} style={enrollmentInput}/></label></div>
         <label style={enrollmentLabel}>Gênero<select required value={form.gender} onChange={e=>setForm({...form,gender:e.target.value})} style={enrollmentInput}><option value="">Selecione</option><option value="FEMININO">Feminino</option><option value="MASCULINO">Masculino</option><option value="NAO_BINARIO">Não binário</option><option value="OUTRO">Outro</option><option value="NAO_INFORMAR">Prefiro não informar</option></select></label>
         <label style={enrollmentLabel}>Grau de escolaridade<select required value={form.education} onChange={e=>setForm({...form,education:e.target.value})} style={enrollmentInput}><option value="">Selecione</option><option value="FUNDAMENTAL_INCOMPLETO">Fundamental incompleto</option><option value="FUNDAMENTAL_COMPLETO">Fundamental completo</option><option value="MEDIO_INCOMPLETO">Médio incompleto</option><option value="MEDIO_COMPLETO">Médio completo</option><option value="SUPERIOR_INCOMPLETO">Superior incompleto</option><option value="SUPERIOR_COMPLETO">Superior completo</option><option value="POS_GRADUACAO">Pós-graduação</option></select></label>
         <label style={enrollmentLabel}>Possui deficiência? Qual?<textarea value={form.disability} onChange={e=>setForm({...form,disability:e.target.value})} style={enrollmentInput}/></label>
         <label style={enrollmentLabel}>Necessidade de acessibilidade para as aulas<textarea value={form.accessibilityNeeds} onChange={e=>setForm({...form,accessibilityNeeds:e.target.value})} style={enrollmentInput} placeholder="Descreva os recursos necessários, caso haja."/></label>
         <label style={enrollmentLabel}>Necessidade de acompanhante nas aulas<textarea value={form.companionNeeds} onChange={e=>setForm({...form,companionNeeds:e.target.value})} style={enrollmentInput} placeholder="Descreva a necessidade, caso haja."/></label>
+        </>}
         <div style={termBox}><strong>Proteção de dados — LGPD</strong><p style={termText}>Autorizo o tratamento dos meus dados pessoais e sensíveis exclusivamente para seleção, matrícula, acompanhamento pedagógico, acessibilidade e certificação. O RG será armazenado em área privada e acessível somente por pessoal autorizado.</p><label><input type="checkbox" required checked={form.lgpdAccepted} onChange={e=>setForm({...form,lgpdAccepted:e.target.checked})}/> Li e autorizo o tratamento descrito.</label></div>
         <div style={termBox}><strong>Termo de compromisso do estudante</strong><p style={termText}>Comprometo-me a fornecer informações verdadeiras, participar das atividades e cumprir a frequência mínima definida para a turma. Faltas injustificadas, abandono ou fraude podem causar cancelamento da matrícula e impedimento temporário de novas inscrições, após análise administrativa e conforme regulamentação vigente. O limite da plataforma é de 3 inscrições por CPF a cada ano.</p><label><input type="checkbox" required checked={form.commitmentAccepted} onChange={e=>setForm({...form,commitmentAccepted:e.target.checked})}/> Li e aceito o termo de compromisso.</label></div>
         <div style={{display:'flex',gap:10}}><button type="button" onClick={()=>setStep(1)} style={{...enrollmentButton,background:'#334155'}}>Voltar</button><button disabled={loading || cepLoading || (form.eligibilityType === 'RESIDENT' && !cepResult?.eligible)} style={{...enrollmentButton,background:course.chatColor,flex:1,opacity:(loading || cepLoading || (form.eligibilityType === 'RESIDENT' && !cepResult?.eligible)) ? .55 : 1}}>{loading?'Validando e enviando…':'Finalizar matrícula'}</button></div>
@@ -528,8 +536,55 @@ const enrollmentButton: React.CSSProperties = { padding: 12, border: 0, borderRa
 const termBox: React.CSSProperties = { padding: 16, border: '1px solid rgba(96,165,250,.25)', borderRadius: 10, background: 'rgba(37,99,235,.08)', color: '#cbd5e1', fontSize: 13 }
 const termText: React.CSSProperties = { color: '#94a3b8', lineHeight: 1.55, margin: '8px 0 12px' }
 
-function CourseCard({ course, onVideoOpen, onEnroll }: { course: Course; onVideoOpen: () => void; onEnroll: () => void }) {
+function AvailabilityNoticeModal({ course, profile, token, onClose }: { course: Course; profile: EnrollmentProfile | null; token: string; onClose: () => void }) {
+  const [phone, setPhone] = useState(profile?.phone || '')
+  const [editing, setEditing] = useState(!profile?.phone)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const savedPhone = profile?.phone || ''
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setLoading(true); setError('')
+    try {
+      const response = await fetch('/api/course-availability-notices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ courseId: course.databaseId, phone: editing ? phone : undefined }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.message || 'Não foi possível registrar o aviso.')
+      setMessage(result.message)
+    } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Não foi possível registrar o aviso.') }
+    finally { setLoading(false) }
+  }
+
+  return <div onClick={onClose} style={{position:'fixed',inset:0,zIndex:210,background:'rgba(0,0,0,.72)',display:'grid',placeItems:'center',padding:20}}>
+    <div onClick={event=>event.stopPropagation()} className="animate-slide-in" style={{width:'100%',maxWidth:460,background:'#111827',border:'1px solid rgba(96,165,250,.28)',borderRadius:18,padding:26,color:'#e2e8f0',boxShadow:'0 20px 60px rgba(0,0,0,.5)'}}>
+      <button onClick={onClose} aria-label="Fechar" style={{float:'right',background:'none',border:0,color:'#94a3b8',fontSize:22,cursor:'pointer'}}>×</button>
+      <div style={{fontSize:28,marginBottom:10}}>🔔</div>
+      <h2 style={{margin:'0 0 8px',fontSize:22,color:'#fff'}}>Avise-me quando estiver disponível</h2>
+      <p style={{margin:'0 0 20px',color:'#94a3b8',lineHeight:1.55}}>Receba um aviso quando <strong style={{color:'#e2e8f0'}}>{course.name}</strong> voltar a aceitar inscrições.</p>
+      {message ? <div style={{...termBox,borderColor:'rgba(34,197,94,.45)',background:'rgba(34,197,94,.08)',color:'#86efac'}}>{message}</div> : <form onSubmit={submit} style={{display:'grid',gap:14}}>
+        {savedPhone && !editing ? <>
+          <div style={{...termBox,borderColor:'rgba(96,165,250,.35)'}}>Podemos avisar você pelo telefone:<br /><strong style={{display:'block',fontSize:18,color:'#fff',marginTop:6}}>{savedPhone}</strong></div>
+          <p style={{margin:0,color:'#cbd5e1'}}>Este número continua correto?</p>
+          <div style={{display:'flex',gap:10}}><button type="submit" disabled={loading} style={{...enrollmentButton,background:'#2563eb',flex:1}}>{loading?'Salvando…':'Sim, está correto'}</button><button type="button" onClick={()=>setEditing(true)} style={{...enrollmentButton,background:'#334155',flex:1}}>Alterar número</button></div>
+        </> : <>
+          <label style={enrollmentLabel}>Telefone<input autoFocus required type="tel" value={phone} onChange={event=>setPhone(event.target.value)} placeholder="(27) 99999-9999" style={enrollmentInput}/></label>
+          <button disabled={loading} style={{...enrollmentButton,background:'#2563eb'}}>{loading?'Salvando…':'Avise-me'}</button>
+          {savedPhone && <button type="button" onClick={()=>{setPhone(savedPhone);setEditing(false)}} style={{background:'none',border:0,color:'#93c5fd',cursor:'pointer'}}>Usar número cadastrado</button>}
+        </>}
+        {error && <p role="alert" style={{margin:0,color:'#f87171'}}>{error}</p>}
+      </form>}
+    </div>
+  </div>
+}
+
+function CourseCard({ course, onVideoOpen, onEnroll, onNotify }: { course: Course; onVideoOpen: () => void; onEnroll: () => void; onNotify: () => void }) {
   const pct = Math.min(95, Math.round((course.inscritos / (course.vagas * 28)) * 100))
+  const hasOpenClass = Boolean(course.classes?.some(item => item.status === 'OPEN'))
 
   return (
     <div
@@ -665,18 +720,18 @@ function CourseCard({ course, onVideoOpen, onEnroll }: { course: Course; onVideo
             <div style={{ fontSize: 13, fontWeight: 700, color: course.chatColor }}>{course.mediaSalarial}</div>
           </div>
           <button
-            onClick={onEnroll}
+            onClick={hasOpenClass ? onEnroll : onNotify}
             style={{
               padding: '8px 16px', borderRadius: 9, border: 'none', cursor: 'pointer',
-              background: course.status === 'breve' ? 'rgba(255,255,255,0.05)' : `${course.chatColor}`,
-              color: course.status === 'breve' ? '#475569' : '#fff',
+              background: hasOpenClass ? `${course.chatColor}` : 'rgba(255,255,255,0.08)',
+              color: hasOpenClass ? '#fff' : '#cbd5e1',
               fontWeight: 700, fontSize: 12.5, letterSpacing: '0.02em',
               whiteSpace: 'nowrap', transition: 'opacity 0.2s',
             }}
-            onMouseEnter={e => { if (course.status !== 'breve') e.currentTarget.style.opacity = '0.86' }}
+            onMouseEnter={e => { if (hasOpenClass) e.currentTarget.style.opacity = '0.86' }}
             onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
           >
-            {course.status === 'breve' ? 'Avise-me' : 'Inscrever-se — Grátis'}
+            {hasOpenClass ? 'Inscrever-se — Grátis' : 'Avise-me'}
           </button>
         </div>
       </div>
@@ -684,7 +739,7 @@ function CourseCard({ course, onVideoOpen, onEnroll }: { course: Course; onVideo
   )
 }
 
-function ChatBot({ onEnroll }: { onEnroll: (course: Course) => void }) {
+function ChatBot({ onEnroll, onNotify }: { onEnroll: (course: Course) => void; onNotify: (course: Course) => void }) {
   const courses = useCourses()
   const turtleAccessory: Record<string, string> = { tecnologia: '💻', criatividade: '🎨', negocios: '💼', gastronomia: '👨‍🍳', construcao: '🦺', marketing: '📣', moda: '🧵' }
   const [open, setOpen] = useState(false)
@@ -697,6 +752,8 @@ function ChatBot({ onEnroll }: { onEnroll: (course: Course) => void }) {
     theme: '#f97316',
   })
   const [messages, setMessages] = useState<{ role: 'bot' | 'user'; text: string }[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null)
   const [started, setStarted] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -741,9 +798,49 @@ function ChatBot({ onEnroll }: { onEnroll: (course: Course) => void }) {
     }
   }
 
+  const selectCourse = (course: Course) => {
+    setSelectedCourse(course)
+    setMessages(previous => [...previous, { role: 'bot', text: `${course.name} tem ${course.cargaHoraria}h, duração de ${course.duracao} e acontece no período ${course.periodo}. ${course.synopse}\n\n${course.classes?.some(item => item.status === 'OPEN') ? 'Se quiser, posso iniciar sua inscrição agora.' : 'No momento as inscrições não estão abertas, mas posso registrar seu telefone para avisar você.'}` }])
+  }
+
+  const submitChat = (event: React.FormEvent) => {
+    event.preventDefault()
+    const text = chatInput.trim()
+    if (!text) return
+    setChatInput('')
+    const normalized = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    const namedCourse = courses.find(course => normalized.includes(course.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()))
+    const course = namedCourse || selectedCourse || chat.results[0]
+    const wantsEnrollment = /(inscrev|participar|fazer esse curso|entrar nesse curso|quero esse curso)/.test(normalized)
+    const wantsNotice = /(avise|avisar|notifique|notificar)/.test(normalized)
+    const wantsDetails = /(detalh|sobre|duracao|carga horaria|periodo)/.test(normalized)
+    setMessages(previous => [...previous, { role: 'user', text }])
+    if (namedCourse) setSelectedCourse(namedCourse)
+    if (wantsEnrollment && !course) {
+      const available = courses.filter(item => item.classes?.some(currentClass => currentClass.status === 'OPEN'))
+      setChat(previous => ({ ...previous, step: 'result', results: available.slice(0, 4) }))
+      setMessages(previous => [...previous, { role: 'bot', text: 'Claro! Qual curso você quer fazer? Escolha uma opção disponível abaixo e eu inicio sua inscrição.' }])
+      return
+    }
+    if ((wantsEnrollment || wantsNotice) && course) {
+      if (course.classes?.some(item => item.status === 'OPEN') && wantsEnrollment) {
+        setMessages(previous => [...previous, { role: 'bot', text: `Perfeito — vou iniciar a inscrição em ${course.name}. Usarei seus dados já cadastrados e pedirei somente o que faltar. Antes de finalizar, você poderá revisar tudo.` }])
+        onEnroll(course)
+      } else {
+        setMessages(previous => [...previous, { role: 'bot', text: `${course.name} ainda não está disponível. Vou abrir o aviso; se já houver um telefone cadastrado, basta confirmá-lo.` }])
+        onNotify(course)
+      }
+      return
+    }
+    if (wantsDetails && course) { selectCourse(course); return }
+    if (namedCourse) { selectCourse(namedCourse); return }
+    setMessages(previous => [...previous, { role: 'bot', text: 'Posso ajudar você a encontrar um curso, explicar uma opção ou iniciar uma inscrição. Diga o nome do curso ou escolha uma das opções abaixo.' }])
+  }
+
   const reset = () => {
     setChat({ step: 'objetivo', objetivo: '', area: '', periodo: '', results: [], theme: '#f97316' })
     setMessages([{ role: 'bot', text: CHATBOT_STEPS.objetivo.question }])
+    setSelectedCourse(null)
   }
 
   const currentStep = CHATBOT_STEPS[chat.step]
@@ -849,7 +946,7 @@ function ChatBot({ onEnroll }: { onEnroll: (course: Course) => void }) {
                 <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 6 }}>{c.area} · {c.cargaHoraria}h · {c.periodo}</div>
                 <StatusBadge status={c.status} />
                 <div style={{ marginTop: 8, fontSize: 12, color: c.chatColor, fontWeight: 600 }}>{c.mediaSalarial}</div>
-                {c.classes?.some(item => item.status === 'OPEN') ? <button type="button" onClick={() => { onEnroll(c); setOpen(false) }} style={{...enrollmentButton,width:'100%',marginTop:10,background:c.chatColor}}>Inscrever-se gratuitamente</button> : <button type="button" onClick={() => { setOpen(false); window.setTimeout(() => document.getElementById('pesquisa')?.scrollIntoView({behavior:'smooth'}), 100) }} style={{...enrollmentButton,width:'100%',marginTop:10,background:'#334155'}}>Avise-me quando abrir</button>}
+                <div style={{display:'flex',gap:8,marginTop:10}}><button type="button" onClick={() => selectCourse(c)} style={{...enrollmentButton,flex:1,padding:9,background:'#334155'}}>Detalhes</button>{c.classes?.some(item => item.status === 'OPEN') ? <button type="button" onClick={() => { selectCourse(c); onEnroll(c) }} style={{...enrollmentButton,flex:1,padding:9,background:c.chatColor}}>Inscrever-se</button> : <button type="button" onClick={() => { selectCourse(c); onNotify(c) }} style={{...enrollmentButton,flex:1,padding:9,background:'#334155'}}>Avise-me</button>}</div>
               </div>
             ))}
 
@@ -901,6 +998,10 @@ function ChatBot({ onEnroll }: { onEnroll: (course: Course) => void }) {
               </button>
             </div>
           )}
+          <form onSubmit={submitChat} style={{display:'flex',gap:8,padding:'0 14px 14px'}}>
+            <input value={chatInput} onChange={event=>setChatInput(event.target.value)} placeholder="Digite sua mensagem" aria-label="Mensagem para o assistente" style={{...enrollmentInput,flex:1,padding:'10px 12px',fontSize:13}} />
+            <button type="submit" style={{...enrollmentButton,background:accentColor,padding:'10px 14px'}}>Enviar</button>
+          </form>
         </div>
       )}
     </>
@@ -1159,7 +1260,7 @@ function Hero() {
   )
 }
 
-function CoursesSection({ onEnroll }: { onEnroll: (course: Course) => void }) {
+function CoursesSection({ onEnroll, onNotify }: { onEnroll: (course: Course) => void; onNotify: (course: Course) => void }) {
   const [videoOpen, setVideoOpen] = useState<Course | null>(null)
   const courses = useCourses()
   const sorted = [...courses].sort((a, b) => b.inscritos - a.inscritos)
@@ -1208,7 +1309,8 @@ function CoursesSection({ onEnroll }: { onEnroll: (course: Course) => void }) {
               key={course.id}
               course={course}
               onVideoOpen={() => setVideoOpen(course)}
-              onEnroll={() => course.status === 'breve' ? document.getElementById('pesquisa')?.scrollIntoView() : onEnroll(course)}
+              onEnroll={() => onEnroll(course)}
+              onNotify={() => onNotify(course)}
             />
           ))}
         </div>
@@ -1226,7 +1328,7 @@ function EnrollSection() {
     },
     {
       n: '02', title: 'Faça o Cadastro', icon: '📝',
-      desc: 'Preencha o formulário online com seus dados pessoais. Você precisará de RG, CPF e comprovante de residência em Vitória.',
+      desc: 'Preencha o formulário online com os dados necessários. Se você já tem cadastro, suas informações são aproveitadas automaticamente.',
       color: '#3b82f6',
     },
     {
@@ -1309,31 +1411,6 @@ function EnrollSection() {
           ))}
         </div>
 
-        {/* Requirements */}
-        <div style={{
-          marginTop: 40, padding: '24px 28px',
-          background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)',
-          borderRadius: 14, display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center',
-        }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#3b82f6', marginBottom: 6 }}>📋 Documentos necessários</div>
-            <div style={{ fontSize: 13, color: '#94a3b8' }}>
-              RG ou CNH · CPF · Comprovante de residência em Vitória · Foto 3×4
-            </div>
-          </div>
-          <div style={{ marginLeft: 'auto' }}>
-            <a
-              href="#cursos"
-              style={{
-                padding: '10px 24px', borderRadius: 10,
-                background: '#3b82f6', color: '#fff',
-                fontWeight: 700, fontSize: 14, textDecoration: 'none',
-              }}
-            >
-              Escolher um curso
-            </a>
-          </div>
-        </div>
       </div>
     </section>
   )
@@ -1859,16 +1936,19 @@ export default function App() {
   const [activeSection, setActiveSection] = useState('home')
   const [courses, setCourses] = useState<Course[]>(COURSES)
   const [enrollmentOpen, setEnrollmentOpen] = useState<Course | null>(null)
+  const [noticeOpen, setNoticeOpen] = useState<Course | null>(null)
   const [studentToken, setStudentToken] = useState(() => localStorage.getItem('student-token') || '')
   const [student, setStudent] = useState<StudentProfile | null>(null)
+  const [enrollmentProfile, setEnrollmentProfile] = useState<EnrollmentProfile | null>(null)
 
   useEffect(() => {
     getJson<{ courses: Course[] }>('/api/courses').then(result => setCourses(result.courses)).catch(() => {})
   }, [])
 
   useEffect(() => {
-    if (!studentToken) { setStudent(null); return }
+    if (!studentToken) { setStudent(null); setEnrollmentProfile(null); return }
     getJson<{ user: StudentProfile }>('/api/auth/me', studentToken).then(result => setStudent(result.user)).catch(() => { localStorage.removeItem('student-token'); setStudentToken(''); setStudent(null) })
+    getJson<{ profile: EnrollmentProfile }>('/api/student/enrollment-profile', studentToken).then(result => setEnrollmentProfile(result.profile)).catch(() => setEnrollmentProfile(null))
   }, [studentToken])
 
   useEffect(() => {
@@ -1886,19 +1966,20 @@ export default function App() {
 
   return (
     <CoursesContext.Provider value={courses}><div style={{ minHeight: '100vh', background: '#0a0b14' }}>
-      {enrollmentOpen && <EnrollmentModal course={enrollmentOpen} student={student} token={studentToken} onClose={() => setEnrollmentOpen(null)} />}
+      {enrollmentOpen && <EnrollmentModal course={enrollmentOpen} student={student} profile={enrollmentProfile} token={studentToken} onClose={() => setEnrollmentOpen(null)} />}
+      {noticeOpen && <AvailabilityNoticeModal course={noticeOpen} profile={enrollmentProfile} token={studentToken} onClose={() => setNoticeOpen(null)} />}
       <a className="skip-link" href="#conteudo">Ir para o conteúdo principal</a>
       <GovernmentBar />
       <Navbar activeSection={activeSection} />
       <Hero />
       <PopularSection />
-      <CoursesSection onEnroll={setEnrollmentOpen} />
+      <CoursesSection onEnroll={setEnrollmentOpen} onNotify={setNoticeOpen} />
       <EnrollSection />
       <TestimonialsSection />
       <InterestSurvey />
       <SatisfactionSurvey />
       <Footer />
-      <ChatBot onEnroll={setEnrollmentOpen} />
+      <ChatBot onEnroll={setEnrollmentOpen} onNotify={setNoticeOpen} />
     </div></CoursesContext.Provider>
   )
 }

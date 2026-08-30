@@ -78,6 +78,50 @@ app.post('/api/auth/login', route(async (req, res) => {
 }))
 app.get('/api/auth/me', auth, route(async (req, res) => res.json({ user: userView(await prisma.user.findUniqueOrThrow({ where: { id: req.auth.sub } })) })))
 
+// This endpoint is deliberately scoped to the signed-in student. It lets the
+// enrollment and notification flows reuse data that the student has already
+// provided, without exposing another student's enrollment information.
+app.get('/api/student/enrollment-profile', auth, route(async (req, res) => {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: req.auth.sub },
+    select: {
+      name: true,
+      email: true,
+      enrollments: {
+        where: { status: { not: 'CANCELLED' } },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: {
+          phone: true, cpf: true, eligibilityType: true, cep: true, cnpj: true,
+          race: true, birthDate: true, gender: true, education: true,
+          disability: true, accessibilityNeeds: true, companionNeeds: true,
+          rgDocumentPath: true,
+        },
+      },
+    },
+  })
+  const previous = user.enrollments[0]
+  res.json({
+    profile: {
+      name: user.name,
+      email: user.email,
+      phone: previous?.phone || '',
+      cpf: previous?.cpf || '',
+      eligibilityType: previous?.eligibilityType || '',
+      cep: previous?.cep || '',
+      cnpj: previous?.cnpj || '',
+      race: previous?.race || '',
+      birthDate: previous?.birthDate ? previous.birthDate.toISOString().slice(0, 10) : '',
+      gender: previous?.gender || '',
+      education: previous?.education || '',
+      disability: previous?.disability || '',
+      accessibilityNeeds: previous?.accessibilityNeeds || '',
+      companionNeeds: previous?.companionNeeds || '',
+      hasRgDocument: Boolean(previous?.rgDocumentPath),
+    },
+  })
+}))
+
 const courseInclude = { classes: { include: { _count: { select: { enrollments: true } } }, orderBy: { createdAt: 'desc' } } }
 app.get('/api/courses', route(async (_req, res) => res.json({ courses: (await prisma.course.findMany({ where: { published: true }, include: courseInclude, orderBy: { name: 'asc' } })).map(courseView) })))
 app.get('/api/courses/:slug', route(async (req, res) => {
@@ -104,10 +148,13 @@ app.post('/api/enrollments', optionalAuth, upload.single('rgDocument'), route(as
   const result = schema.safeParse(req.body)
   const reject = async message => { if (req.file) await unlink(req.file.path).catch(() => {}); return res.status(400).json({ message }) }
   if (!result.success) return reject(result.error.issues[0]?.message || 'Revise os dados da matrícula.')
-  if (!req.file) return reject('Envie uma foto legível do RG em JPG, PNG ou WebP.')
   const data = result.data
   const authenticatedUser = req.auth ? await prisma.user.findUnique({ where: { id: req.auth.sub } }) : null
   if (req.auth && (!authenticatedUser?.active || authenticatedUser.role !== 'STUDENT')) return reject('Use uma conta ativa de estudante para realizar a matrícula.')
+  const previousEnrollment = authenticatedUser
+    ? await prisma.enrollment.findFirst({ where: { userId: authenticatedUser.id, status: { not: 'CANCELLED' }, rgDocumentPath: { not: null } }, orderBy: { createdAt: 'desc' }, select: { rgDocumentPath: true } })
+    : null
+  if (!req.file && !previousEnrollment?.rgDocumentPath) return reject('Envie uma foto legível do RG em JPG, PNG ou WebP.')
   if (authenticatedUser) { data.name = authenticatedUser.name; data.email = authenticatedUser.email }
   let verifiedAddress = null
   if (data.eligibilityType === 'RESIDENT') {
@@ -133,8 +180,22 @@ app.post('/api/enrollments', optionalAuth, upload.single('rgDocument'), route(as
   if (yearlyEnrollments >= 3) return reject('Limite anual atingido: são permitidas até 3 inscrições por CPF por ano.')
   const status = target._count.enrollments >= target.capacity ? 'WAITLIST' : 'PENDING'
   const user = authenticatedUser
-  const saved = await prisma.enrollment.create({ data: { classId: data.classId, userId: user?.id, name: data.name, email: data.email.toLowerCase(), cpf: data.cpf, phone: data.phone, eligibilityType: data.eligibilityType, cep: data.cep, ...verifiedAddress, cnpj: data.cnpj || null, race: data.race, birthDate: data.birthDate, gender: data.gender, education: data.education, disability: data.disability || null, accessibilityNeeds: data.accessibilityNeeds || null, companionNeeds: data.companionNeeds || null, rgDocumentPath: req.file.filename, lgpdAcceptedAt: new Date(), commitmentAcceptedAt: new Date(), termsVersion: '2026.1', status } })
+  const saved = await prisma.enrollment.create({ data: { classId: data.classId, userId: user?.id, name: data.name, email: data.email.toLowerCase(), cpf: data.cpf, phone: data.phone, eligibilityType: data.eligibilityType, cep: data.cep, ...verifiedAddress, cnpj: data.cnpj || null, race: data.race, birthDate: data.birthDate, gender: data.gender, education: data.education, disability: data.disability || null, accessibilityNeeds: data.accessibilityNeeds || null, companionNeeds: data.companionNeeds || null, rgDocumentPath: req.file?.filename || previousEnrollment?.rgDocumentPath || null, lgpdAcceptedAt: new Date(), commitmentAcceptedAt: new Date(), termsVersion: '2026.1', status } })
   res.status(201).json({ id: saved.id, status, message: status === 'WAITLIST' ? 'Você entrou na lista de espera.' : 'Inscrição realizada.' })
+}))
+app.post('/api/course-availability-notices', optionalAuth, route(async (req, res) => {
+  const data = parse(z.object({ courseId: z.string().uuid(), phone: z.string().trim().min(8).max(30).optional() }), req.body)
+  const user = req.auth ? await prisma.user.findUnique({ where: { id: req.auth.sub }, select: { id: true, enrollments: { where: { status: { not: 'CANCELLED' } }, orderBy: { createdAt: 'desc' }, take: 1, select: { phone: true } } } }) : null
+  const phone = data.phone || user?.enrollments[0]?.phone || ''
+  if (!phone) return res.status(400).json({ message: 'Informe um telefone para receber o aviso.' })
+  const course = await prisma.course.findUnique({ where: { id: data.courseId }, select: { id: true, name: true } })
+  if (!course) return res.status(404).json({ message: 'Curso não encontrado.' })
+  await prisma.courseAvailabilityNotice.upsert({
+    where: { courseId_phone: { courseId: course.id, phone } },
+    update: { userId: user?.id || null },
+    create: { courseId: course.id, userId: user?.id || null, phone },
+  })
+  res.status(201).json({ message: `Pronto! Avisaremos você quando ${course.name} estiver disponível.` })
 }))
 app.post('/api/interests', route(async (req, res) => {
   const d = parse(z.object({ nome: z.string().min(2).max(120), bairro: z.string().min(2).max(120), curso: z.string().min(2).max(160), contato: z.string().max(160).optional().default('') }), req.body)

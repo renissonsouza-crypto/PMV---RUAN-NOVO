@@ -50,6 +50,7 @@ model User {
   active       Boolean      @default(true)
   enrollments  Enrollment[]
   evaluations  Evaluation[]
+  availabilityNotices CourseAvailabilityNotice[]
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
 
@@ -74,11 +75,26 @@ model Course {
   published     Boolean         @default(true)
   classes       ClassOffering[]
   curriculum    CurriculumModule[]
+  availabilityNotices CourseAvailabilityNotice[]
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
 
   @@index([published, status])
   @@map("courses")
+}
+
+model CourseAvailabilityNotice {
+  id        String   @id @default(uuid()) @db.Uuid
+  courseId  String   @map("course_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  phone     String   @db.VarChar(30)
+  createdAt DateTime @default(now()) @map("created_at")
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([courseId, phone])
+  @@index([courseId, createdAt])
+  @@map("course_availability_notices")
 }
 
 model ClassOffering {
