@@ -1,0 +1,12 @@
+{
+  "title": "QualificaVix | Cursos de Qualificação Profissional",
+  "description": "Consulte cursos gratuitos de qualificação profissional, turmas e inscrições do município de Vitória, Espírito Santo.",
+  "language": "pt-BR",
+  "robots": {
+    "index": true
+  },
+  "accessibility": {
+    "addBypassLinks": true,
+    "ignoreReducedMotion": false
+  }
+}

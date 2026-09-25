@@ -1,0 +1,42 @@
+services:
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: qualifica
+      POSTGRES_USER: qualifica
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qualifica_local_2026}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qualifica -d qualifica"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build: .
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgresql://qualifica:${POSTGRES_PASSWORD:-qualifica_local_2026}@database:5432/qualifica?schema=public
+      JWT_SECRET: ${JWT_SECRET:-desenvolvimento-local-chave-qualificavix-2026}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@qualificavix.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@123456}
+      UPLOAD_DIR: /app/uploads/private/rg
+    ports:
+      - "8080:8080"
+    volumes:
+      - document-data:/app/uploads
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres-data:
+  document-data:
