@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getJson, postJson, ApiRequestError } from './api'
+import { siteHref } from './routes'
 
 type Module = { id: string; title: string; description: string; workload: number; position: number }
 type Session = { id: string; title: string; startsAt: string; endsAt: string; location?: string }
@@ -65,7 +66,7 @@ export default function StudentApp() {
   }
 
   if (!token) return <main style={s.page}><form onSubmit={access} style={s.login}>
-    <a href="/" style={s.back}>← Voltar ao QualificaVix</a>
+    <a href={siteHref()} style={s.back}>← Voltar ao QualificaVix</a>
     <h1 style={{ marginBottom: 4 }}>{registering ? 'Criar minha conta' : 'Área do estudante'}</h1>
     <p style={s.muted}>{registering ? 'Leva menos de um minuto — e não é obrigatório para conhecer os cursos.' : 'Acompanhe sua jornada de aprendizagem.'}</p>
     {registering && <input style={s.input} placeholder="Nome completo" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required autoFocus />}
@@ -76,7 +77,7 @@ export default function StudentApp() {
     <button type="button" style={s.linkButton} onClick={() => { setRegistering(!registering); setError('') }}>{registering ? 'Já tenho conta' : 'Primeiro acesso? Criar conta'}</button>
     <div style={{ borderTop: '1px solid #E2E7EE', paddingTop: 14, marginTop: 4, textAlign: 'center' }}>
       <span style={s.muted}>Só quer dar uma olhada? </span>
-      <a href="/#cursos" style={{ color: '#0A5E66', fontWeight: 700 }}>Ver cursos sem criar conta →</a>
+      <a href={siteHref('#cursos')} style={{ color: '#0A5E66', fontWeight: 700 }}>Ver cursos sem criar conta →</a>
     </div>
   </form></main>
 
@@ -95,9 +96,9 @@ export default function StudentApp() {
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
 
   return <main style={s.page}><div style={s.shell}>
-    <header style={s.header}><div><a href="/" style={s.back}>Qualifica<span style={{ color: '#FF6B57' }}>Vix</span></a><h1 style={{ margin: '12px 0 4px' }}>Olá, {dashboard.student.name.split(' ')[0]}</h1><p style={s.muted}>Aqui está o seu percurso formativo.</p></div><button style={s.secondary} onClick={() => { localStorage.removeItem('student-token'); setToken(''); setDashboard(null) }}>Sair</button></header>
+    <header style={s.header}><div><a href={siteHref()} style={s.back}>Qualifica<span style={{ color: '#FF6B57' }}>Vix</span></a><h1 style={{ margin: '12px 0 4px' }}>Olá, {dashboard.student.name.split(' ')[0]}</h1><p style={s.muted}>Aqui está o seu percurso formativo.</p></div><button style={s.secondary} onClick={() => { localStorage.removeItem('student-token'); setToken(''); setDashboard(null) }}>Sair</button></header>
     <nav style={s.nav}>{([['cursos','Meus cursos'],['calendario','Calendário'],['grade','Grade curricular'],['certificados','Certificados']] as [Tab,string][]).map(([key,label]) => <button key={key} onClick={() => setTab(key)} style={tab === key ? s.activeTab : s.tab}>{label}</button>)}</nav>
-    {enrollments.length === 0 && <section style={s.empty}><h2>Nenhuma inscrição vinculada</h2><p style={s.muted}>Faça uma inscrição usando o e-mail {dashboard.student.email} para acompanhá-la aqui.</p><a href="/#cursos" style={s.primaryLink}>Conhecer cursos</a></section>}
+    {enrollments.length === 0 && <section style={s.empty}><h2>Nenhuma inscrição vinculada</h2><p style={s.muted}>Faça uma inscrição usando o e-mail {dashboard.student.email} para acompanhá-la aqui.</p><a href={siteHref('#cursos')} style={s.primaryLink}>Conhecer cursos</a></section>}
     {tab === 'cursos' && enrollments.map(item => {
       const badge = statusColor[item.status] || { bg: '#E4E9F0', fg: '#334155' }
       return <article key={item.id} style={s.course}><img src={item.class.course.image} alt="" style={s.courseImage}/><div><span style={{ ...s.badge, background: badge.bg, color: badge.fg }}>{statusText[item.status] || item.status}</span><h2>{item.class.course.name}</h2><p style={s.muted}>{item.class.name} · {item.class.location || 'Local a confirmar'}</p><p>{item.class.course.workload} horas · {item.class.course.duration}</p></div></article>

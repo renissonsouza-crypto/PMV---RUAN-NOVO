@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { authorizedJson, postJson } from './api'
+import { siteHref } from './routes'
 
 type Dashboard = Record<'users' | 'courses' | 'classes' | 'enrollments' | 'suggestions' | 'evaluations', number> & { averageRating: number }
 type Section = 'enrollments' | 'courses' | 'classes' | 'users' | 'suggestions' | 'evaluations'
@@ -64,7 +65,7 @@ export default function AdminApp() {
       <input style={styles.input} type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="E-mail" required />
       <input style={styles.input} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Senha" required />
       <button style={styles.primary}>Entrar</button>{error && <p style={styles.error}>{error}</p>}
-      <a href="/" style={styles.link}>Voltar ao site</a>
+      <a href={siteHref()} style={styles.link}>Voltar ao site</a>
     </form></main>
   )
 
