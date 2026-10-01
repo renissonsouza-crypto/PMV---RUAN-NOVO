@@ -26,7 +26,7 @@ services:
         value: /tmp/uploads/private/rg
     healthCheckPath: /api/health
 
- databases:
+databases:
   - name: qualificavix-db
     databaseName: qualifica
     region: oregon
