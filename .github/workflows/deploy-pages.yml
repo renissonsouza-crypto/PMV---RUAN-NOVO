@@ -30,6 +30,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Build static site
+        env:
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
         run: npm run build
       - name: Add SPA fallback
         run: cp dist/index.html dist/404.html

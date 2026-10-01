@@ -21,9 +21,23 @@ not provide server-side URL rewrites, so the workflow copies `index.html` to
 
 GitHub Pages hosts only static files. It cannot run this repository's
 Express/Prisma API, migrations, database, uploads, authentication, or other
-server-side behavior. Deploy the API separately and configure the frontend to
-use that hosted API before expecting interactive data and authentication
-features to work on the Pages site.
+server-side behavior. Deploy the API and database separately, then configure the
+frontend to use that hosted API before expecting interactive data and
+authentication features to work on the Pages site.
+
+### Deploy recomendado
+
+- Frontend: GitHub Pages
+- Backend/API: Render, Railway, Fly.io, Azure App Service, etc.
+- Database: PostgreSQL managed (Render/Railway/Aiven/Neon/etc.)
+
+Set the public API URL in the frontend build as a secret or environment variable:
+
+```bash
+VITE_API_BASE_URL=https://api.seu-dominio.com
+```
+
+The frontend uses this value automatically via the config in src/api.ts.
 
 ## Local development
 

@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
   return {
     base: process.env.FIGMA_PUBLIC_URL
       ? `${process.env.FIGMA_PUBLIC_URL}/`
-      : mode === 'production'
+      : process.env.GITHUB_ACTIONS === 'true'
         ? '/PMV---RUAN-NOVO/'
         : '/',
     build: {

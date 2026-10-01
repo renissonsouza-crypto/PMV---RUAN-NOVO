@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { authorizedJson, postJson } from './api'
+import { apiUrl, authorizedJson, postJson } from './api'
 import { siteHref } from './routes'
 
 type Dashboard = Record<'users' | 'courses' | 'classes' | 'enrollments' | 'suggestions' | 'evaluations', number> & { averageRating: number }
@@ -51,7 +51,7 @@ export default function AdminApp() {
 
   async function openDocument(id: string) {
     try {
-      const response = await fetch(`/api/admin/enrollments/${id}/rg`, { headers: { Authorization: `Bearer ${token}` } })
+      const response = await fetch(apiUrl(`/api/admin/enrollments/${id}/rg`), { headers: { Authorization: `Bearer ${token}` } })
       if (!response.ok) { const result = await response.json().catch(() => ({})); throw new Error(result.message || 'Documento não encontrado.') }
       const url = URL.createObjectURL(await response.blob())
       window.open(url, '_blank', 'noopener,noreferrer')

@@ -15,6 +15,12 @@ export class ApiRequestError extends Error {
   }
 }
 
+export function apiUrl(path: string): string {
+  const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+  const target = path.startsWith('/') ? path : `/${path}`
+  return baseUrl ? `${baseUrl}${target}` : target
+}
+
 async function readResponse<T>(response: Response): Promise<T> {
   const data = (await response.json().catch(() => ({}))) as T & ApiError
   if (!response.ok) throw new ApiRequestError(data.message || 'Não foi possível processar a solicitação.', response.status)
@@ -22,11 +28,11 @@ async function readResponse<T>(response: Response): Promise<T> {
 }
 
 export async function getJson<T>(path: string, token?: string): Promise<T> {
-  return readResponse<T>(await fetch(path, { headers: token ? { Authorization: `Bearer ${token}` } : {} }))
+  return readResponse<T>(await fetch(apiUrl(path), { headers: token ? { Authorization: `Bearer ${token}` } : {} }))
 }
 
 export async function postJson<T>(path: string, payload: unknown): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetch(apiUrl(path), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -36,7 +42,7 @@ export async function postJson<T>(path: string, payload: unknown): Promise<T> {
 }
 
 export async function authorizedJson<T>(path: string, method: string, token: string, payload?: unknown): Promise<T> {
-  return readResponse<T>(await fetch(path, {
+  return readResponse<T>(await fetch(apiUrl(path), {
     method,
     headers: { Authorization: `Bearer ${token}`, ...(payload ? { 'Content-Type': 'application/json' } : {}) },
     body: payload ? JSON.stringify(payload) : undefined,

@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react'
-import { getJson, postJson } from './api'
+import { apiUrl, getJson, postJson } from './api'
 import { siteHref } from './routes'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -672,7 +672,7 @@ function EnrollmentModal({ course, onClose, student, profile, token }: { course:
     const timer = window.setTimeout(async () => {
       setCepLoading(true)
       try {
-        const response = await fetch(`/api/address/cep/${cep}`, { signal: controller.signal })
+        const response = await fetch(apiUrl(`/api/address/cep/${cep}`), { signal: controller.signal })
         const result = await response.json()
         if (!response.ok) throw new Error(result.message || 'Não foi possível consultar o CEP.')
         setCepResult(result)
@@ -693,7 +693,7 @@ function EnrollmentModal({ course, onClose, student, profile, token }: { course:
       Object.entries(form).forEach(([key, value]) => payload.append(key, String(value)))
       payload.append('classId', targetClass?.id || '')
       if (rgDocument) payload.append('rgDocument', rgDocument)
-      const response = await fetch('/api/enrollments', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: payload })
+      const response = await fetch(apiUrl('/api/enrollments'), { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: payload })
       const result = await response.json()
       if (!response.ok) throw new Error(result.message || 'Não foi possível realizar a inscrição.')
       setMessage(result.message)
@@ -753,7 +753,7 @@ function AvailabilityNoticeModal({ course, profile, token, onClose }: { course: 
     event.preventDefault()
     setLoading(true); setError('')
     try {
-      const response = await fetch('/api/course-availability-notices', {
+      const response = await fetch(apiUrl('/api/course-availability-notices'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ courseId: course.databaseId, phone: editing ? phone : undefined }),
