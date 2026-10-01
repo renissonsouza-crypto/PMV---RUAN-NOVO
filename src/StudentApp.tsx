@@ -20,6 +20,26 @@ const statusColor: Record<string, { bg: string; fg: string }> = {
   COMPLETED: { bg: '#F3E8FF', fg: '#7C3AED' },
 }
 const date = (value: string) => new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(new Date(value))
+const formatCpf = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 11)
+  if (digits.length <= 3) return digits
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`
+}
+const maskPhone = (value: string) => {
+  const digits = value.replace(/\D/g, '')
+  if (digits.length <= 3) return value
+  const visibleStart = digits.slice(0, 2)
+  const visibleEnd = digits.slice(-2)
+  return `(${visibleStart}) 9****-${visibleEnd}`
+}
+const maskEmail = (value: string) => {
+  const [local, domain] = value.split('@')
+  if (!domain) return value
+  const localMasked = local.length <= 2 ? `${local[0] || ''}***` : `${local[0]}***${local.at(-1) || ''}`
+  return `${localMasked}@${domain}`
+}
 
 export default function StudentApp() {
   const [token, setToken] = useState(() => localStorage.getItem('student-token') || '')
@@ -33,6 +53,13 @@ export default function StudentApp() {
   const [submitting, setSubmitting] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', password: '' })
   const [error, setError] = useState('')
+  const [forgotOpen, setForgotOpen] = useState(false)
+  const [recoveryCpf, setRecoveryCpf] = useState('')
+  const [recoveryChannel, setRecoveryChannel] = useState<'sms' | 'email'>('sms')
+  const [recoveryLoading, setRecoveryLoading] = useState(false)
+  const [recoveryMessage, setRecoveryMessage] = useState('')
+  const [recoveryContact, setRecoveryContact] = useState('')
+  const [recoveryError, setRecoveryError] = useState('')
 
   const loadDashboard = (authToken: string) => {
     setLoadError('')
@@ -65,6 +92,22 @@ export default function StudentApp() {
     }
   }
 
+  const recoverPassword = async (event: React.FormEvent) => {
+    event.preventDefault(); setRecoveryError(''); setRecoveryMessage(''); setRecoveryLoading(true)
+    try {
+      const result = await postJson<{ message: string; contact: string; channel: 'sms' | 'email' }>('/api/auth/password-recovery', {
+        cpf: recoveryCpf.replace(/\D/g, ''),
+        channel: recoveryChannel,
+      })
+      setRecoveryContact(result.contact)
+      setRecoveryMessage(result.message)
+    } catch (requestError) {
+      setRecoveryError(requestError instanceof Error ? requestError.message : 'Não foi possível recuperar sua senha.')
+    } finally {
+      setRecoveryLoading(false)
+    }
+  }
+
   if (!token) return <main style={s.page}><form onSubmit={access} style={s.login}>
     <a href={siteHref()} style={s.back}>← Voltar ao QualificaVix</a>
     <h1 style={{ marginBottom: 4 }}>{registering ? 'Criar minha conta' : 'Área do estudante'}</h1>
@@ -72,14 +115,52 @@ export default function StudentApp() {
     {registering && <input style={s.input} placeholder="Nome completo" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required autoFocus />}
     <input style={s.input} type="email" placeholder="E-mail usado na inscrição" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required />
     <input style={s.input} type="password" placeholder="Senha (mínimo 8 caracteres)" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required minLength={8} />
+    {!registering && <button type="button" style={s.linkButton} onClick={() => { setForgotOpen(true); setRecoveryError(''); setRecoveryMessage(''); setRecoveryContact(''); }}>Esqueceu a senha?</button>}
     <button style={{ ...s.primary, opacity: submitting ? 0.6 : 1 }} disabled={submitting}>{submitting ? 'Enviando…' : registering ? 'Criar minha conta' : 'Entrar'}</button>
     {error && <p role="alert" style={s.error}>{error}</p>}
-    <button type="button" style={s.linkButton} onClick={() => { setRegistering(!registering); setError('') }}>{registering ? 'Já tenho conta' : 'Primeiro acesso? Criar conta'}</button>
+    <button type="button" style={s.linkButton} onClick={() => { setRegistering(!registering); setError(''); setForgotOpen(false) }}>{registering ? 'Já tenho conta' : 'Primeiro acesso? Criar conta'}</button>
     <div style={{ borderTop: '1px solid #E2E7EE', paddingTop: 14, marginTop: 4, textAlign: 'center' }}>
       <span style={s.muted}>Só quer dar uma olhada? </span>
       <a href={siteHref('#cursos')} style={{ color: '#0A5E66', fontWeight: 700 }}>Ver cursos sem criar conta →</a>
     </div>
-  </form></main>
+  </form>
+    {forgotOpen && <div onClick={() => setForgotOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'grid', placeItems: 'center', zIndex: 50, padding: 20 }}>
+      <div onClick={event => event.stopPropagation()} style={{ width: '100%', maxWidth: 420, background: '#fff', borderRadius: 18, border: '1px solid #E2E7EE', padding: 24, boxShadow: '0 12px 40px rgba(15,23,42,0.12)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <h2 style={{ margin: 0, fontSize: 28 }}>Recuperar senha</h2>
+          <button type="button" onClick={() => setForgotOpen(false)} style={{ border: 0, background: 'transparent', color: '#334155', fontSize: 28, cursor: 'pointer' }}>×</button>
+        </div>
+        <p style={{ ...s.muted, marginTop: 0 }}>Informe seu CPF para receber o link de redefinição.</p>
+        <form onSubmit={recoverPassword} style={{ display: 'grid', gap: 14 }}>
+          <input
+            style={s.input}
+            value={recoveryCpf}
+            onChange={event => setRecoveryCpf(formatCpf(event.target.value))}
+            placeholder="CPF"
+            inputMode="numeric"
+            maxLength={14}
+            required
+          />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <button type="button" onClick={() => setRecoveryChannel('sms')} style={{ ...s.tab, borderColor: recoveryChannel === 'sms' ? '#0A5E66' : '#CBD5E1', background: recoveryChannel === 'sms' ? '#EAF6F5' : '#fff', color: '#0F172A', fontWeight: 700 }}>
+              SMS / WhatsApp
+            </button>
+            <button type="button" onClick={() => setRecoveryChannel('email')} style={{ ...s.tab, borderColor: recoveryChannel === 'email' ? '#0A5E66' : '#CBD5E1', background: recoveryChannel === 'email' ? '#EAF6F5' : '#fff', color: '#0F172A', fontWeight: 700 }}>
+              E-mail
+            </button>
+          </div>
+          <button type="submit" style={{ ...s.primary, opacity: recoveryLoading ? 0.6 : 1 }} disabled={recoveryLoading}>
+            {recoveryLoading ? 'Enviando…' : 'Enviar código'}
+          </button>
+          {recoveryError && <p role="alert" style={s.error}>{recoveryError}</p>}
+          {recoveryMessage && <div style={{ background: '#E7F8ED', border: '1px solid #A9E8C1', color: '#0F7A38', borderRadius: 12, padding: '12px 14px', fontWeight: 600 }}>
+            {recoveryMessage}
+            {recoveryContact && <div style={{ marginTop: 8 }}>Contato: {recoveryContact}</div>}
+          </div>}
+        </form>
+      </div>
+    </div>}
+  </main>
 
   if (loadError) return <main style={s.page}><div style={{ ...s.empty, maxWidth: 480, margin: '15vh auto' }}>
     <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>

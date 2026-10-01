@@ -53,6 +53,20 @@ const validCpf = value => {
   const digit = length => { const sum = cpf.slice(0, length).split('').reduce((total, number, index) => total + Number(number) * (length + 1 - index), 0); const remainder = (sum * 10) % 11; return remainder === 10 ? 0 : remainder }
   return digit(9) === Number(cpf[9]) && digit(10) === Number(cpf[10])
 }
+const maskPhone = value => {
+  const digits = String(value || '').replace(/\D/g, '')
+  if (!digits) return ''
+  const start = digits.slice(0, 2)
+  const end = digits.slice(-2)
+  return `(${start}) 9****-${end}`
+}
+const maskEmail = value => {
+  const email = String(value || '')
+  const [local, domain] = email.split('@')
+  if (!domain) return email
+  const maskedLocal = local.length <= 2 ? `${local[0] || ''}***` : `${local[0]}***${local.at(-1) || ''}`
+  return `${maskedLocal}@${domain}`
+}
 const courseView = course => {
   const activeClass = course.classes?.find(item => ['OPEN', 'DRAFT'].includes(item.status))
   return { id: course.slug, databaseId: course.id, name: course.name, area: course.area, areaKey: course.areaKey, image: course.image, videoId: course.videoId || '', synopse: course.synopsis, status: statuses[course.status], duracao: course.duration, periodo: periods[activeClass?.period] || 'Diurno', cargaHoraria: course.workload, inscritos: course.classes?.reduce((sum, item) => sum + (item._count?.enrollments || 0), 0) || 0, vagas: activeClass?.capacity || 0, indicadoPara: course.indicatedFor, mediaSalarial: course.salaryRange || 'A consultar', chatColor: course.accentColor, classes: course.classes || [] }
@@ -75,6 +89,35 @@ app.post('/api/auth/login', route(async (req, res) => {
   const user = await prisma.user.findUnique({ where: { email: data.email.toLowerCase() } })
   if (!user?.active || !(await bcrypt.compare(data.password, user.passwordHash))) return res.status(401).json({ message: 'E-mail ou senha inválidos.' })
   res.json({ token: jwt.sign({ sub: user.id, role: user.role }, secret, { expiresIn: '8h' }), user: userView(user) })
+}))
+app.post('/api/auth/password-recovery', route(async (req, res) => {
+  const data = parse(z.object({ cpf: z.string().trim().min(11).max(14), channel: z.enum(['sms', 'email']).default('sms') }), req.body)
+  const cpf = data.cpf.replace(/\D/g, '')
+  if (!validCpf(cpf)) return res.status(400).json({ message: 'Informe um CPF válido.' })
+
+  const enrollment = await prisma.enrollment.findFirst({
+    where: { cpf, status: { not: 'CANCELLED' } },
+    include: { user: { select: { email: true } } },
+    orderBy: { createdAt: 'desc' },
+  })
+
+  if (!enrollment) return res.status(404).json({ message: 'Não encontramos uma conta vinculada a este CPF.' })
+
+  const phone = enrollment.phone || ''
+  const email = enrollment.user?.email || enrollment.email || ''
+  const channel = data.channel === 'email' ? 'email' : 'sms'
+
+  if (channel === 'sms' && !phone) return res.status(400).json({ message: 'Este cadastro não possui telefone cadastrado para recuperação via SMS.' })
+  if (channel === 'email' && !email) return res.status(400).json({ message: 'Este cadastro não possui e-mail cadastrado para recuperação por e-mail.' })
+
+  const contact = channel === 'sms' ? maskPhone(phone) : maskEmail(email)
+  res.json({
+    message: channel === 'sms'
+      ? 'Solicitação recebida. O link de recuperação foi encaminhado para o número cadastrado.'
+      : 'Solicitação recebida. O link de recuperação foi encaminhado para o e-mail cadastrado.',
+    channel,
+    contact,
+  })
 }))
 app.get('/api/auth/me', auth, route(async (req, res) => res.json({ user: userView(await prisma.user.findUniqueOrThrow({ where: { id: req.auth.sub } })) })))
 

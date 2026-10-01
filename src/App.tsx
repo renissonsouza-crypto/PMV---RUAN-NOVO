@@ -662,6 +662,7 @@ function EnrollmentModal({ course, onClose, student, profile, token }: { course:
   const [loading, setLoading] = useState(false)
   const [cepLoading, setCepLoading] = useState(false)
   const [cepResult, setCepResult] = useState<{ address: { cep: string; street: string; complement: string; neighborhood: string; city: string; state: string; stateName: string; region: string; ibge: string; ddd: string }; eligible: boolean; message: string } | null>(null)
+  const showStudentAreaLink = !student && !token
   const [cepError, setCepError] = useState('')
   useEffect(() => {
     if (form.eligibilityType !== 'RESIDENT') { setCepResult(null); setCepError(''); return }
@@ -706,7 +707,7 @@ function EnrollmentModal({ course, onClose, student, profile, token }: { course:
       <h2 style={{ color: '#0F172A', marginTop: 0, fontFamily: "'Fraunces', serif", fontWeight: 600 }}>Inscrição — {course.name}</h2>
       <div style={{ display: 'flex', gap: 8, marginBottom: 18, fontWeight: 700 }}><span style={{ color: step === 1 ? '#0A5E66' : '#64748B' }}>1. Contato</span><span style={{ color: '#CBD5E1' }}>›</span><span style={{ color: step === 2 ? '#0A5E66' : '#64748B' }}>2. Matrícula</span></div>
       {message ? <div style={{ color: '#0F7A38', padding: 24, textAlign: 'center', fontSize: 18, fontWeight: 600 }}>{message}</div> : step === 1 ? <form onSubmit={event => { event.preventDefault(); setStep(2) }} style={{ display: 'grid', gap: 12 }}>
-        {student ? <div style={{...termBox,borderColor:'#A9E8C1',background:'#E7F8ED',color:'#0F7A38'}}>✓ Usaremos os dados já cadastrados na sua conta. Você só precisa completar o que faltar.</div> : <div style={termBox}>Já possui cadastro? <a href={siteHref('/estudante')} style={{color:'#0A5E66',fontWeight:700}}>Entre na Área do Estudante</a> para aproveitar automaticamente seus dados.</div>}
+        {student ? <div style={{...termBox,borderColor:'#A9E8C1',background:'#E7F8ED',color:'#0F7A38'}}>✓ Usaremos os dados já cadastrados na sua conta. Você só precisa completar o que faltar.</div> : showStudentAreaLink && <div style={termBox}>Já possui cadastro? <a href={siteHref('/estudante')} style={{color:'#0A5E66',fontWeight:700}}>Entre na Área do Estudante</a> para aproveitar automaticamente seus dados.</div>}
         {profile?.phone ? <div style={{...termBox,borderColor:'#A9E8C1',background:'#E7F8ED'}}><strong style={{color:'#0F7A38'}}>Dados de contato encontrados</strong><div style={{marginTop:7,color:'#0F172A'}}>{form.name}<br />{form.email}<br />{form.phone}</div><small style={{display:'block',marginTop:8,color:'#475569'}}>Confira seus dados na etapa final antes de concluir.</small></div> : [['name','Nome completo','text'],['email','E-mail','email'],['phone','Telefone','tel']].map(([key,label,type]) => { const accountField=Boolean(student && (key==='name'||key==='email')); return <label key={key} style={enrollmentLabel}>{label}<input type={type} required readOnly={accountField} value={String(form[key as keyof typeof form])} onChange={event => setForm(previous => ({ ...previous, [key]: event.target.value }))} style={accountField?readOnlyAddressInput:enrollmentInput} /></label> })}
         <button disabled={!targetClass} style={{ ...enrollmentButton, background: course.chatColor }}>{targetClass ? 'Avançar' : 'Turma indisponível'}</button>
       </form> : <form onSubmit={submit} style={{ display: 'grid', gap: 14 }}>
@@ -1273,7 +1274,7 @@ function GovernmentBar() {
   </div>
 }
 
-function Navbar({ activeSection }: { activeSection: string }) {
+function Navbar({ activeSection, hasStudentSession }: { activeSection: string; hasStudentSession: boolean }) {
   const [scrolled, setScrolled] = useState(false)
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40)
@@ -1281,12 +1282,13 @@ function Navbar({ activeSection }: { activeSection: string }) {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  const links = [
+  const navLinks = [
     { href: '#cursos', label: 'Cursos' },
     { href: '#como-funciona', label: 'Como Funciona' },
     { href: '#historias', label: 'Histórias' },
     { href: '#pesquisa', label: 'Pesquisa' },
   ]
+  const showStudentAreaLink = true
 
   // O menu começa transparente sobre a foto do herói (texto claro) e, ao
   // rolar a página, ganha fundo bege-claro sólido — nesse momento o texto
@@ -1328,7 +1330,7 @@ function Navbar({ activeSection }: { activeSection: string }) {
 
         {/* Nav links */}
         <div className="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
-          {links.map(l => (
+          {navLinks.map(l => (
             <a
               key={l.href}
               href={l.href}
@@ -1342,23 +1344,27 @@ function Navbar({ activeSection }: { activeSection: string }) {
               {l.label}
             </a>
           ))}
-          <a href={siteHref('/estudante')} style={{ color: scrolled ? '#0A5E66' : '#ffffff', fontSize: 18, fontWeight: 700, textDecoration: 'none' }}>Área do estudante</a>
-          <a
-            href={siteHref('/estudante?mode=register')}
-            title="Criar sua conta gratuita QualificaVix — não é necessário para conhecer os cursos"
-            style={{
-              padding: '10px 22px', borderRadius: 10,
-              background: 'linear-gradient(135deg, #FF6B57, #E14B38)',
-              color: '#fff', fontWeight: 700, fontSize: 18,
-              textDecoration: 'none', letterSpacing: '0.02em',
-              boxShadow: '0 4px 14px rgba(255,107,87,0.35)',
-              transition: 'opacity 0.2s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.opacity = '0.88' }}
-            onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
-          >
-            Inscreva-se Grátis
-          </a>
+          {showStudentAreaLink && (
+            <a href={siteHref('/estudante')} style={{ color: scrolled ? '#0A5E66' : '#ffffff', fontSize: 18, fontWeight: 700, textDecoration: 'none' }}>Área do estudante</a>
+          )}
+          {showStudentAreaLink && (
+            <a
+              href={siteHref('/estudante?mode=register')}
+              title="Criar sua conta gratuita QualificaVix — não é necessário para conhecer os cursos"
+              style={{
+                padding: '10px 22px', borderRadius: 10,
+                background: 'linear-gradient(135deg, #FF6B57, #E14B38)',
+                color: '#fff', fontWeight: 700, fontSize: 18,
+                textDecoration: 'none', letterSpacing: '0.02em',
+                boxShadow: '0 4px 14px rgba(255,107,87,0.35)',
+                transition: 'opacity 0.2s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.opacity = '0.88' }}
+              onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
+            >
+              Inscreva-se Grátis
+            </a>
+          )}
         </div>
       </div>
     </nav>
@@ -2559,7 +2565,7 @@ export default function App() {
       {noticeOpen && <AvailabilityNoticeModal course={noticeOpen} profile={enrollmentProfile} token={studentToken} onClose={() => setNoticeOpen(null)} />}
       <a className="skip-link" href="#conteudo">Ir para o conteúdo principal</a>
       <GovernmentBar />
-      <Navbar activeSection={activeSection} />
+      <Navbar activeSection={activeSection} hasStudentSession={Boolean(studentToken || student || enrollmentProfile)} />
       <Hero />
       <StoriesBar />
       <PopularSection />

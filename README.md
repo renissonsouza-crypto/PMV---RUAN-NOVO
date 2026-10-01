@@ -29,9 +29,15 @@ authentication features to work on the Pages site.
 
 - Frontend: GitHub Pages
 - Backend/API: Render, Railway, Fly.io, Azure App Service, etc.
-- Database: PostgreSQL managed (Render/Railway/Aiven/Neon/etc.)
+- Database: Supabase PostgreSQL or any managed PostgreSQL service
 
-Set the public API URL in the frontend build as a secret or environment variable:
+If using Supabase, use the direct database connection string from the Supabase dashboard:
+
+```bash
+DATABASE_URL=postgresql://postgres:SEU_PASSWORD@db.SEU_PROJECT_REF.supabase.co:5432/postgres?sslmode=require
+```
+
+Then configure the public API URL in the frontend build:
 
 ```bash
 VITE_API_BASE_URL=https://api.seu-dominio.com
